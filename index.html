@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Explicando a Bíblia</title>
     <meta name="description" content="Explicações bíblicas modernas com Inteligência Artificial">
+    
+    <!-- Monetag Verification -->
+    <meta name="monetag" content="489da7586c896b7cd007363f0a75b148">
 
     <!-- Monetag Popunder -->
     <script src="https://fpyf8.com/88/tag.min.js" data-zone="188187" async data-cfasync="false"></script>
@@ -214,8 +217,15 @@
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
 
-            // Setup Effects (Counter, Toasts)
+            // Setup Effects (Counter, Toasts, Service Worker)
             useEffect(() => {
+                // Register Service Worker for Monetag
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.register('/sw.js')
+                        .then(reg => console.log('SW Registered', reg.scope))
+                        .catch(err => console.error('SW Failed', err));
+                }
+
                 // Fake Online Counter
                 const interval = setInterval(() => {
                     setOnlineCount(prev => {
