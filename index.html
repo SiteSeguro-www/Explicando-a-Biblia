@@ -1,14 +1,15 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Explicando a Bíblia</title>
-    
-    <!-- Google Fonts -->
+    <meta name="description" content="Explicações bíblicas modernas com Inteligência Artificial">
+
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Playfair+Display:ital,wght@0,700;1,600&display=swap" rel="stylesheet">
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -19,14 +20,30 @@
                 extend: {
                     fontFamily: {
                         sans: ['Inter', 'sans-serif'],
+                        serif: ['Playfair Display', 'serif'],
                     },
                     colors: {
                         brand: {
-                            dark: '#0f172a',
-                            purple: '#7c3aed',
-                            blue: '#2563eb',
+                            dark: '#020617',
+                            purple: '#8b5cf6',
+                            blue: '#3b82f6',
                             green: '#10b981',
                             gold: '#fbbf24',
+                            goldDark: '#d97706',
+                        }
+                    },
+                    animation: {
+                        'gradient': 'gradient 8s linear infinite',
+                        'float': 'float 6s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        gradient: {
+                            '0%, 100%': { 'background-position': '0% 50%' },
+                            '50%': { 'background-position': '100% 50%' },
+                        },
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-10px)' },
                         }
                     }
                 }
@@ -34,17 +51,15 @@
         }
     </script>
 
-    <!-- React & ReactDOM -->
+    <!-- React & Babel -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    
-    <!-- Babel for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- Tesseract.js for OCR -->
+    <!-- Tesseract.js -->
     <script src="https://unpkg.com/tesseract.js@v5.0.3/dist/tesseract.min.js"></script>
 
-    <!-- Google Gemini SDK Import Map -->
+    <!-- Gemini SDK Import Map -->
     <script type="importmap">
     {
         "imports": {
@@ -53,20 +68,63 @@
     }
     </script>
 
+    <!-- Polyfill for process.env -->
+    <script>
+        window.process = {
+            env: {
+                // REPLACE THIS WITH YOUR ACTUAL API KEY FOR GITHUB PAGES DEPLOYMENT
+                // OR ENSURE IT IS INJECTED BY YOUR BUILD SYSTEM
+                API_KEY: 'YOUR_API_KEY_HERE' 
+            }
+        };
+    </script>
+
     <style>
         body {
-            background-color: #020617; /* Slate 950 */
-            color: #f8fafc;
+            background-color: #020617;
+            color: #f1f5f9;
+            overflow-x: hidden;
         }
+        
+        /* Modern Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569; 
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+
         .gradient-text {
-            background: linear-gradient(to right, #a78bfa, #34d399, #60a5fa);
+            background: linear-gradient(to right, #60a5fa, #34d399, #a78bfa, #ffffff);
+            background-size: 200% auto;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            animation: gradient 8s linear infinite;
         }
-        .glass-card {
-            background: rgba(15, 23, 42, 0.7);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+
+        .btn-gradient {
+            background: linear-gradient(45deg, #4f46e5, #0ea5e9);
+            transition: all 0.3s ease;
+        }
+        .btn-gradient:hover {
+            filter: brightness(1.1);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px -10px rgba(14, 165, 233, 0.5);
         }
     </style>
 </head>
@@ -74,59 +132,49 @@
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
-        import { GoogleGenAI } from "@google/genai";
+        import { GoogleGenAI, Type } from "@google/genai";
 
-        // --- ICONS (SVG Components) ---
-        const SearchIcon = ({ className }) => (
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        );
-        const CameraIcon = ({ className }) => (
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
-        );
-        const BookIcon = ({ className }) => (
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
-        );
-        const ShareIcon = ({ className }) => (
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>
-        );
-        const LoaderIcon = ({ className }) => (
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-        );
-        const XIcon = ({ className, onClick }) => (
-            <svg onClick={onClick} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-        );
-        const ChevronRight = ({ className }) => (
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m9 18 6-6-6-6"/></svg>
-        );
+        // --- ICONS ---
+        const IconSearch = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>;
+        const IconCamera = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>;
+        const IconBook = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>;
+        const IconLoader = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>;
+        const IconShare = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>;
+        const IconCheck = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>;
 
         // --- COMPONENTS ---
 
-        // Input Mode Switcher
-        const TabButton = ({ active, onClick, icon: Icon, label }) => (
-            <button 
-                onClick={onClick}
-                className={`flex items-center justify-center gap-2 px-6 py-3 rounded-full transition-all duration-300 w-full sm:w-auto ${
-                    active 
-                    ? 'bg-gradient-to-r from-brand-blue to-brand-purple text-white shadow-lg shadow-brand-purple/30' 
-                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                }`}
-            >
-                <Icon className="w-5 h-5" />
-                <span className="font-medium">{label}</span>
-            </button>
-        );
+        const Button = ({ onClick, children, variant = 'primary', className = '', disabled = false }) => {
+            const baseClass = "px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed";
+            const variants = {
+                primary: "btn-gradient text-white shadow-lg",
+                secondary: "bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700",
+                outline: "border-2 border-slate-700 text-slate-300 hover:border-brand-purple hover:text-brand-purple bg-transparent"
+            };
+            return (
+                <button onClick={onClick} disabled={disabled} className={`${baseClass} ${variants[variant]} ${className}`}>
+                    {children}
+                </button>
+            );
+        };
 
-        // Result Section Card
-        const ExplanationCard = ({ title, content, colorClass }) => (
-            <div className="glass-card rounded-xl p-6 mb-4 border-l-4 transition-all hover:translate-x-1" style={{ borderLeftColor: colorClass }}>
-                <h3 className="text-xl font-bold mb-3 text-slate-100 flex items-center gap-2">
-                    <ChevronRight className="w-5 h-5 text-slate-400" />
+        const Card = ({ title, content, color = "border-brand-purple", delay = 0 }) => (
+            <div 
+                className={`glass-panel rounded-2xl p-6 border-l-4 ${color} hover:bg-slate-800/50 transition-colors animate-[fade-in_0.6s_ease-out_forwards]`}
+                style={{ animationDelay: `${delay}ms` }}
+            >
+                <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2 font-serif tracking-wide">
                     {title}
                 </h3>
-                <div className="text-slate-300 leading-relaxed space-y-2">
+                <div className="text-slate-300 leading-relaxed text-base">
                     {Array.isArray(content) ? (
-                        <ul className="list-disc list-inside space-y-1 ml-2">
-                            {content.map((item, idx) => <li key={idx}>{item}</li>)}
+                        <ul className="space-y-3">
+                            {content.map((item, idx) => (
+                                <li key={idx} className="flex gap-3 items-start">
+                                    <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-brand-gold flex-shrink-0"></span>
+                                    <span>{item}</span>
+                                </li>
+                            ))}
                         </ul>
                     ) : (
                         <p>{content}</p>
@@ -135,354 +183,303 @@
             </div>
         );
 
-        // --- MAIN APP COMPONENT ---
-        
-        const App = () => {
+        // --- MAIN APP ---
+
+        function App() {
             const [mode, setMode] = React.useState('text'); // 'text' | 'camera'
             const [inputText, setInputText] = React.useState('');
-            const [loading, setLoading] = React.useState(false);
-            const [statusMessage, setStatusMessage] = React.useState('');
+            const [isLoading, setIsLoading] = React.useState(false);
+            const [statusText, setStatusText] = React.useState('');
             const [result, setResult] = React.useState(null);
-            const [apiKey, setApiKey] = React.useState(process.env.API_KEY || ''); 
+            const [stream, setStream] = React.useState(null);
             
-            // Camera Refs
             const videoRef = React.useRef(null);
             const canvasRef = React.useRef(null);
-            const [cameraStream, setCameraStream] = React.useState(null);
 
-            // Setup API Key on mount if not in env (For GH Pages demo)
-            React.useEffect(() => {
-                // This is a workaround for the GitHub Pages static environment where process.env isn't available
-                if (!apiKey) {
-                    const storedKey = localStorage.getItem('gemini_api_key');
-                    if (storedKey) {
-                        setApiKey(storedKey);
-                    } else {
-                        // Small delay to allow render
-                        setTimeout(() => {
-                            const key = prompt("Por favor, insira sua chave de API do Google Gemini para usar o app:");
-                            if (key) {
-                                setApiKey(key);
-                                localStorage.setItem('gemini_api_key', key);
-                            }
-                        }, 1000);
-                    }
-                }
-            }, []);
-
-            // Cleanup camera on unmount or mode change
+            // Cleanup camera on unmount or mode switch
             React.useEffect(() => {
                 return () => {
-                    if (cameraStream) {
-                        cameraStream.getTracks().forEach(track => track.stop());
-                    }
+                    stopCamera();
                 };
-            }, [cameraStream]);
-
-            const startCamera = async () => {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: { facingMode: 'environment' } 
-                    });
-                    setCameraStream(stream);
-                    if (videoRef.current) {
-                        videoRef.current.srcObject = stream;
-                    }
-                } catch (err) {
-                    console.error("Erro ao acessar câmera:", err);
-                    alert("Não foi possível acessar a câmera. Verifique as permissões.");
-                }
-            };
+            }, []);
 
             const stopCamera = () => {
-                if (cameraStream) {
-                    cameraStream.getTracks().forEach(track => track.stop());
-                    setCameraStream(null);
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    setStream(null);
                 }
             };
 
-            const captureAndOCR = async () => {
+            const startCamera = async () => {
+                setResult(null);
+                setMode('camera');
+                try {
+                    const mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { facingMode: 'environment' } 
+                    });
+                    setStream(mediaStream);
+                    // Wait for state update before attaching to ref
+                    setTimeout(() => {
+                        if (videoRef.current) {
+                            videoRef.current.srcObject = mediaStream;
+                        }
+                    }, 100);
+                } catch (err) {
+                    alert("Erro ao acessar câmera: " + err.message);
+                    setMode('text');
+                }
+            };
+
+            const handleCapture = async () => {
                 if (!videoRef.current || !canvasRef.current) return;
 
-                setLoading(true);
-                setStatusMessage('Capturando imagem e lendo texto (OCR)...');
+                setIsLoading(true);
+                setStatusText('Processando imagem (OCR)...');
 
                 const video = videoRef.current;
                 const canvas = canvasRef.current;
-                const context = canvas.getContext('2d');
+                const ctx = canvas.getContext('2d');
 
-                // Set canvas dimensions to video dimensions
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
-                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                ctx.drawImage(video, 0, 0);
 
-                // Stop camera preview
                 stopCamera();
+                setMode('text'); // Switch back to text to show results/loading
 
                 try {
-                    // Tesseract OCR
-                    const { data: { text } } = await Tesseract.recognize(
-                        canvas,
-                        'por',
-                        { logger: m => {
-                            if(m.status === 'recognizing text') {
-                                setStatusMessage(`Lendo texto: ${Math.round(m.progress * 100)}%`);
+                    const { data: { text } } = await Tesseract.recognize(canvas, 'por', {
+                        logger: m => {
+                            if (m.status === 'recognizing text') {
+                                setStatusText(`Lendo texto: ${Math.round(m.progress * 100)}%`);
                             }
-                        }}
-                    );
-
-                    if (!text || text.trim().length < 10) {
-                        throw new Error("Não foi possível identificar texto legível. Tente novamente com mais luz.");
-                    }
-
-                    setInputText(text); // Set text for review
-                    setMode('text'); // Switch to text mode to show what was found
-                    handleExplain(text); // Auto trigger explanation
-
-                } catch (error) {
-                    console.error(error);
-                    setStatusMessage('Erro na leitura da imagem.');
-                    alert(error.message);
-                    setLoading(false);
-                }
-            };
-
-            const handleExplain = async (textToExplain) => {
-                const query = textToExplain || inputText;
-                if (!query) return;
-
-                setLoading(true);
-                setStatusMessage('Consultando inteligência artificial...');
-                setResult(null);
-
-                try {
-                    if (!apiKey) throw new Error("Chave de API não configurada.");
-
-                    const ai = new GoogleGenAI({ apiKey: apiKey });
-                    
-                    // Use Gemini 2.5 Flash for speed and quality
-                    const modelName = 'gemini-2.5-flash';
-                    
-                    const prompt = `
-                        Você é um especialista bíblico e teólogo moderno voltado para jovens e adultos contemporâneos.
-                        Analise o seguinte texto ou referência bíblica: "${query}".
-                        
-                        Se o texto for inconclusivo, responda com um JSON contendo "error": "Texto não reconhecido como bíblico".
-                        
-                        Caso contrário, retorne um objeto JSON estrito (sem markdown code blocks) com a seguinte estrutura:
-                        {
-                            "reference": "Livro Capitulo:Versiculo (ex: João 3:16)",
-                            "summary": "Um resumo moderno e curto (máx 2 linhas)",
-                            "historicalContext": "O que estava acontecendo na época, quem escreveu e para quem.",
-                            "explanation": "Explicação detalhada em linguagem simples, atual e inspiradora.",
-                            "application": "Como aplicar isso na vida prática hoje (trabalho, família, ansiedade, etc).",
-                            "reflectionQuestions": ["Pergunta 1?", "Pergunta 2?", "Pergunta 3?"]
-                        }
-                    `;
-
-                    const response = await ai.models.generateContent({
-                        model: modelName,
-                        contents: prompt,
-                        config: {
-                            responseMimeType: "application/json"
                         }
                     });
 
-                    const jsonText = response.text;
-                    const data = JSON.parse(jsonText);
-
-                    if (data.error) {
-                        throw new Error(data.error);
-                    }
-
-                    setResult(data);
+                    if (!text.trim()) throw new Error("Nenhum texto detectado.");
+                    
+                    setInputText(text);
+                    await generateExplanation(text);
 
                 } catch (error) {
-                    console.error("Erro na API:", error);
-                    alert("Erro ao gerar explicação: " + error.message);
-                } finally {
-                    setLoading(false);
-                    setStatusMessage('');
+                    alert("Erro no OCR: " + error.message);
+                    setIsLoading(false);
                 }
             };
 
-            const shareContent = (platform) => {
+            const generateExplanation = async (query) => {
+                if (!query) return;
+
+                const apiKey = process.env.API_KEY;
+                if (!apiKey || apiKey === 'YOUR_API_KEY_HERE') {
+                    alert("API Key não configurada. Por favor, edite o arquivo HTML e adicione sua API Key.");
+                    setIsLoading(false);
+                    return;
+                }
+
+                setIsLoading(true);
+                setStatusText('Consultando sabedoria bíblica...');
+
+                try {
+                    const ai = new GoogleGenAI({ apiKey: apiKey });
+                    
+                    // Define strict JSON Schema
+                    const schema = {
+                        type: Type.OBJECT,
+                        properties: {
+                            reference: { type: Type.STRING, description: "Book Chapter:Verse (e.g. João 3:16)" },
+                            summary: { type: Type.STRING, description: "A concise modern summary" },
+                            historicalContext: { type: Type.STRING, description: "Historical background and authorship" },
+                            explanation: { type: Type.STRING, description: "Detailed theological explanation in simple terms" },
+                            application: { type: Type.STRING, description: "Practical application for modern life" },
+                            reflectionQuestions: { 
+                                type: Type.ARRAY, 
+                                items: { type: Type.STRING },
+                                description: "3 questions for personal reflection"
+                            }
+                        },
+                        required: ["reference", "summary", "historicalContext", "explanation", "application", "reflectionQuestions"]
+                    };
+
+                    const prompt = `
+                        Você é um teólogo moderno e acessível. Analise: "${query}".
+                        Se o texto não for bíblico, use o campo 'reference' para dizer "Texto não reconhecido" e preencha os outros campos com orientações genéricas.
+                        Traduza tudo para Português do Brasil.
+                    `;
+
+                    const response = await ai.models.generateContent({
+                        model: "gemini-2.5-flash",
+                        contents: prompt,
+                        config: {
+                            responseMimeType: "application/json",
+                            responseSchema: schema
+                        }
+                    });
+
+                    if (response.text) {
+                        const data = JSON.parse(response.text);
+                        setResult(data);
+                    } else {
+                        throw new Error("Resposta vazia da IA");
+                    }
+
+                } catch (error) {
+                    console.error(error);
+                    alert("Erro na IA: " + error.message);
+                } finally {
+                    setIsLoading(false);
+                    setStatusText('');
+                }
+            };
+
+            const share = (platform) => {
                 if (!result) return;
-                const text = `📖 *${result.reference}*\n\n"${result.summary}"\n\nVeja a explicação completa em Explicando a Bíblia!`;
+                const text = `📖 *${result.reference}*\n\n"${result.summary}"\n\nVeja a explicação em Explicando a Bíblia!`;
                 const url = window.location.href;
-                
-                let shareUrl = '';
-                if (platform === 'whatsapp') shareUrl = `https://wa.me/?text=${encodeURIComponent(text + ' ' + url)}`;
-                if (platform === 'twitter') shareUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
-                if (platform === 'facebook') shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`;
-                
-                window.open(shareUrl, '_blank');
+                let link = "";
+
+                switch(platform) {
+                    case 'whatsapp': link = `https://wa.me/?text=${encodeURIComponent(text + ' ' + url)}`; break;
+                    case 'twitter': link = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`; break;
+                    case 'facebook': link = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`; break;
+                }
+                window.open(link, '_blank');
             };
 
             return (
-                <div className="min-h-screen pb-12 px-4 sm:px-6 font-sans selection:bg-brand-purple selection:text-white">
+                <div className="min-h-screen flex flex-col items-center p-4 md:p-8 max-w-4xl mx-auto">
                     
                     {/* Header */}
-                    <header className="pt-10 pb-8 text-center max-w-3xl mx-auto">
-                        <div className="inline-flex items-center justify-center p-3 mb-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl">
-                            <BookIcon className="w-8 h-8 text-brand-gold" />
+                    <header className="text-center mb-10 mt-6 animate-[float_6s_ease-in-out_infinite]">
+                        <div className="w-16 h-16 bg-gradient-to-br from-brand-purple to-brand-blue rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-brand-purple/20 rotate-3 hover:rotate-6 transition-transform">
+                            <IconBook className="text-white w-8 h-8" />
                         </div>
-                        <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-2">
+                        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-2 font-serif">
                             Explicando a <span className="gradient-text">Bíblia</span>
                         </h1>
-                        <p className="text-slate-400 text-lg">
-                            Sabedoria antiga para tempos modernos.
-                        </p>
+                        <p className="text-slate-400 font-light text-lg">Sabedoria milenar para o mundo digital</p>
                     </header>
 
-                    {/* Main Interface */}
-                    <main className="max-w-2xl mx-auto">
+                    {/* Controls */}
+                    <div className="glass-panel p-2 rounded-2xl flex gap-2 mb-8 w-full max-w-md">
+                        <button 
+                            onClick={() => { setMode('text'); stopCamera(); }}
+                            className={`flex-1 py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition-all ${mode === 'text' ? 'bg-slate-700 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+                        >
+                            <IconBook /> <span className="font-medium">Digitar</span>
+                        </button>
+                        <button 
+                            onClick={startCamera}
+                            className={`flex-1 py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition-all ${mode === 'camera' ? 'bg-slate-700 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+                        >
+                            <IconCamera /> <span className="font-medium">Câmera</span>
+                        </button>
+                    </div>
+
+                    {/* Main Content Area */}
+                    <main className="w-full max-w-2xl relative">
                         
-                        {/* Mode Switcher */}
-                        <div className="flex flex-col sm:flex-row justify-center gap-4 mb-8">
-                            <TabButton 
-                                active={mode === 'text'} 
-                                onClick={() => { setMode('text'); stopCamera(); }} 
-                                icon={BookIcon} 
-                                label="Digitar Passagem" 
-                            />
-                            <TabButton 
-                                active={mode === 'camera'} 
-                                onClick={() => { setMode('camera'); startCamera(); setResult(null); }} 
-                                icon={CameraIcon} 
-                                label="Usar Câmera" 
-                            />
-                        </div>
+                        {/* Loading Overlay */}
+                        {isLoading && (
+                            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm rounded-3xl animate-[fade-in_0.3s]">
+                                <div className="w-16 h-16 border-4 border-brand-purple border-t-transparent rounded-full animate-spin mb-4"></div>
+                                <p className="text-brand-purple font-semibold animate-pulse">{statusText}</p>
+                            </div>
+                        )}
 
-                        {/* Text Input Area */}
                         {mode === 'text' && (
-                            <div className="glass-card p-2 rounded-2xl flex items-center shadow-2xl mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                <input 
-                                    type="text" 
-                                    className="flex-1 bg-transparent border-none text-white px-4 py-3 focus:outline-none placeholder-slate-500 text-lg"
-                                    placeholder="Ex: João 3:16 ou Salmos 23"
-                                    value={inputText}
-                                    onChange={(e) => setInputText(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && handleExplain()}
-                                />
-                                <button 
-                                    onClick={() => handleExplain()}
-                                    disabled={loading || !inputText}
-                                    className="bg-brand-blue hover:bg-blue-600 text-white p-3 rounded-xl transition-colors disabled:opacity-50"
-                                >
-                                    {loading ? <LoaderIcon className="animate-spin w-6 h-6"/> : <SearchIcon className="w-6 h-6" />}
-                                </button>
-                            </div>
-                        )}
-
-                        {/* Camera Area */}
-                        {mode === 'camera' && (
-                            <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-slate-700 bg-black mb-8 animate-in zoom-in duration-300">
-                                {loading ? (
-                                    <div className="h-64 sm:h-96 flex flex-col items-center justify-center gap-4 text-slate-400">
-                                        <LoaderIcon className="w-10 h-10 animate-spin text-brand-purple"/>
-                                        <p>{statusMessage}</p>
+                            <div className="flex flex-col gap-4 animate-[fade-in_0.5s]">
+                                <div className="relative group">
+                                    <input 
+                                        type="text" 
+                                        value={inputText}
+                                        onChange={(e) => setInputText(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && generateExplanation(inputText)}
+                                        placeholder="Ex: João 3:16, Salmo 23, Gênesis 1..."
+                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-6 py-5 pl-14 text-lg text-white placeholder-slate-500 focus:outline-none focus:border-brand-purple focus:ring-1 focus:ring-brand-purple transition-all shadow-inner"
+                                    />
+                                    <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-brand-purple transition-colors">
+                                        <IconSearch />
                                     </div>
-                                ) : (
-                                    <>
-                                        <video 
-                                            ref={videoRef} 
-                                            autoPlay 
-                                            playsInline 
-                                            className="w-full h-64 sm:h-96 object-cover"
-                                        />
-                                        <canvas ref={canvasRef} className="hidden" />
-                                        
-                                        {/* Camera Overlay */}
-                                        <div className="absolute inset-0 border-[40px] border-black/50 pointer-events-none flex items-center justify-center">
-                                            <div className="w-full h-0.5 bg-red-500/50"></div>
-                                        </div>
-
-                                        <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10">
-                                            <button 
-                                                onClick={captureAndOCR}
-                                                className="bg-white text-black rounded-full w-16 h-16 flex items-center justify-center shadow-lg hover:scale-105 transition-transform"
-                                            >
-                                                <div className="w-14 h-14 rounded-full border-2 border-black"></div>
-                                            </button>
-                                        </div>
-                                    </>
-                                )}
+                                </div>
+                                <Button onClick={() => generateExplanation(inputText)} disabled={!inputText || isLoading}>
+                                    Explicar Passagem
+                                </Button>
                             </div>
                         )}
 
-                        {/* Loading State for Text Mode */}
-                        {loading && mode === 'text' && (
-                            <div className="text-center py-12 animate-pulse">
-                                <LoaderIcon className="w-12 h-12 text-brand-purple mx-auto animate-spin mb-4" />
-                                <p className="text-slate-400 text-lg">{statusMessage}</p>
-                            </div>
-                        )}
-
-                        {/* Results Display */}
-                        {result && !loading && (
-                            <div className="animate-in slide-in-from-bottom-8 duration-700">
-                                <div className="text-center mb-8">
-                                    <span className="inline-block px-4 py-1 rounded-full bg-brand-purple/20 text-brand-purple text-sm font-semibold mb-2 uppercase tracking-wide">
-                                        Explicação Gerada
-                                    </span>
-                                    <h2 className="text-3xl font-bold text-white">{result.reference}</h2>
+                        {mode === 'camera' && (
+                            <div className="relative rounded-3xl overflow-hidden bg-black shadow-2xl border border-slate-800 aspect-[3/4] md:aspect-video animate-[fade-in_0.5s]">
+                                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                                <canvas ref={canvasRef} className="hidden" />
+                                
+                                {/* Overlay Guides */}
+                                <div className="absolute inset-0 border-[30px] border-black/40 pointer-events-none flex items-center justify-center">
+                                    <div className="w-64 h-32 border-2 border-white/50 rounded-lg relative">
+                                        <div className="absolute -top-1 -left-1 w-4 h-4 border-t-4 border-l-4 border-brand-gold"></div>
+                                        <div className="absolute -top-1 -right-1 w-4 h-4 border-t-4 border-r-4 border-brand-gold"></div>
+                                        <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-4 border-l-4 border-brand-gold"></div>
+                                        <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-4 border-r-4 border-brand-gold"></div>
+                                    </div>
                                 </div>
 
-                                <ExplanationCard 
-                                    title="Resumo Moderno" 
-                                    content={result.summary} 
-                                    colorClass="#fbbf24" 
-                                />
-                                
-                                <ExplanationCard 
-                                    title="Contexto Histórico" 
-                                    content={result.historicalContext} 
-                                    colorClass="#f97316" 
-                                />
+                                <div className="absolute bottom-6 left-0 right-0 flex justify-center z-20">
+                                    <button 
+                                        onClick={handleCapture}
+                                        className="w-20 h-20 rounded-full bg-white border-4 border-slate-300 flex items-center justify-center shadow-lg hover:scale-110 transition-transform active:scale-95"
+                                        aria-label="Capturar foto"
+                                    >
+                                        <div className="w-16 h-16 rounded-full bg-transparent border-2 border-black"></div>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
 
-                                <div className="glass-card rounded-xl p-8 mb-4 border-t-4 border-brand-blue shadow-2xl shadow-brand-blue/10">
-                                    <h3 className="text-2xl font-bold mb-4 text-white">Explicação</h3>
-                                    <p className="text-lg text-slate-200 leading-relaxed whitespace-pre-line">
+                        {/* Results */}
+                        {result && !isLoading && mode === 'text' && (
+                            <div className="mt-12 space-y-6 pb-20">
+                                <div className="text-center mb-8 animate-[fade-in_0.5s]">
+                                    <div className="inline-block px-4 py-1.5 rounded-full bg-brand-purple/10 border border-brand-purple/20 text-brand-purple text-xs font-bold uppercase tracking-widest mb-3">
+                                        Análise Completa
+                                    </div>
+                                    <h2 className="text-3xl md:text-4xl font-bold font-serif text-white">{result.reference}</h2>
+                                </div>
+
+                                <Card title="Resumo Moderno" content={result.summary} color="border-brand-gold" delay={100} />
+                                <Card title="Contexto Histórico" content={result.historicalContext} color="border-brand-blue" delay={200} />
+                                
+                                <div className="glass-panel rounded-2xl p-8 border-t-4 border-brand-purple shadow-2xl shadow-brand-purple/10 animate-[fade-in_0.8s_ease-out_forwards]">
+                                    <h3 className="text-2xl font-bold mb-6 text-white font-serif">Explicação</h3>
+                                    <p className="text-lg text-slate-200 leading-relaxed whitespace-pre-wrap">
                                         {result.explanation}
                                     </p>
                                 </div>
 
-                                <ExplanationCard 
-                                    title="Aplicação Prática" 
-                                    content={result.application} 
-                                    colorClass="#10b981" 
-                                />
+                                <Card title="Aplicação Prática" content={result.application} color="border-brand-green" delay={300} />
+                                <Card title="Para Reflexão" content={result.reflectionQuestions} color="border-purple-400" delay={400} />
 
-                                <ExplanationCard 
-                                    title="Para Reflexão" 
-                                    content={result.reflectionQuestions} 
-                                    colorClass="#a78bfa" 
-                                />
-
-                                {/* Social Sharing */}
-                                <div className="mt-8 flex justify-center gap-4">
-                                    <button onClick={() => shareContent('whatsapp')} className="bg-[#25D366] hover:bg-[#20bd5a] text-white px-4 py-2 rounded-lg flex items-center gap-2 font-semibold transition-transform hover:-translate-y-1">
-                                        WhatsApp
+                                {/* Social Share */}
+                                <div className="flex justify-center gap-4 mt-8 pt-8 border-t border-slate-800">
+                                    <button onClick={() => share('whatsapp')} className="p-3 bg-[#25D366]/20 hover:bg-[#25D366]/30 text-[#25D366] rounded-xl transition-colors">
+                                        <IconShare />
                                     </button>
-                                    <button onClick={() => shareContent('twitter')} className="bg-[#1DA1F2] hover:bg-[#1a91da] text-white px-4 py-2 rounded-lg flex items-center gap-2 font-semibold transition-transform hover:-translate-y-1">
-                                        X / Twitter
+                                    <button onClick={() => share('twitter')} className="p-3 bg-[#1DA1F2]/20 hover:bg-[#1DA1F2]/30 text-[#1DA1F2] rounded-xl transition-colors">
+                                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
                                     </button>
-                                    <button onClick={() => shareContent('facebook')} className="bg-[#4267B2] hover:bg-[#365899] text-white px-4 py-2 rounded-lg flex items-center gap-2 font-semibold transition-transform hover:-translate-y-1">
-                                        Facebook
+                                    <button onClick={() => share('facebook')} className="p-3 bg-[#1877F2]/20 hover:bg-[#1877F2]/30 text-[#1877F2] rounded-xl transition-colors">
+                                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
                                     </button>
                                 </div>
                             </div>
                         )}
                     </main>
 
-                    {/* Footer */}
-                    <footer className="mt-20 text-center text-slate-600 text-sm">
-                        <p>Desenvolvido com IA • React • Tailwind • Gemini</p>
+                    <footer className="w-full text-center py-8 text-slate-600 text-sm mt-auto">
+                        <p>© 2024 Explicando a Bíblia. Desenvolvido com Gemini AI.</p>
                     </footer>
                 </div>
             );
-        };
+        }
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
