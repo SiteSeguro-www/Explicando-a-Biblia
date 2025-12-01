@@ -1,0 +1,7 @@
+{
+  "name": "Explicando a Bíblia",
+  "description": "Uma aplicação web moderna para explicar passagens bíblicas usando IA e OCR.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
