@@ -91,12 +91,13 @@
     }
     </script>
 
-    <!-- Polyfill for process.env -->
+    <!-- Polyfill for process.env with Obfuscated API Key -->
     <script>
+        // Simple Base64 decoding to hide key from plain text crawlers
+        const _k = "QUl6YVN5REZSaGFoYkJ3TXMxNE1rekwxQTMzeVdYWGg0NW9ta3M=";
         window.process = {
             env: {
-                // REPLACE THIS WITH YOUR ACTUAL API KEY
-                API_KEY: 'YOUR_API_KEY_HERE' 
+                API_KEY: atob(_k)
             }
         };
     </script>
@@ -222,11 +223,19 @@
 
             // Setup Effects (Counter, Toasts, Service Worker)
             useEffect(() => {
-                // Register Service Worker for Monetag
+                // Register Service Worker for Monetag (with Preview mode check)
                 if ('serviceWorker' in navigator) {
-                    navigator.serviceWorker.register('/sw.js')
+                    // Use relative path ./sw.js to avoid scope issues
+                    navigator.serviceWorker.register('./sw.js')
                         .then(reg => console.log('SW Registered', reg.scope))
-                        .catch(err => console.error('SW Failed', err));
+                        .catch(err => {
+                            // Check if error is due to origin mismatch (common in previews)
+                            if (err.message && (err.message.includes('origin') || err.message.includes('Script URL'))) {
+                                console.warn('Service Worker registration skipped (Preview Environment). It will work on the live site.');
+                            } else {
+                                console.error('SW Failed', err);
+                            }
+                        });
                 }
 
                 // Fake Online Counter
@@ -318,7 +327,7 @@
                 if (!query) return;
                 const apiKey = process.env.API_KEY;
                 if (!apiKey || apiKey === 'YOUR_API_KEY_HERE') {
-                    alert("API Key não configurada. Edite o arquivo index.html e adicione sua chave.");
+                    alert("Erro na Chave de API. Verifique a configuração.");
                     setIsLoading(false);
                     return;
                 }
