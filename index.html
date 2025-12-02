@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Explicando a Bíblia</title>
-    <meta name="description" content="Explicações bíblicas modernas com Inteligência Artificial">
+    <meta name="description" content="Explicações bíblicas modernas">
     
     <!-- Monetag Verification -->
     <meta name="monetag" content="489da7586c896b7cd007363f0a75b148">
@@ -82,15 +82,6 @@
     <!-- Tesseract.js -->
     <script src="https://unpkg.com/tesseract.js@v5.0.3/dist/tesseract.min.js"></script>
 
-    <!-- Gemini SDK Import Map -->
-    <script type="importmap">
-    {
-        "imports": {
-            "@google/genai": "https://esm.run/@google/genai"
-        }
-    }
-    </script>
-
     <style>
         body {
             background-color: #020617;
@@ -144,8 +135,7 @@
 
     <div id="root"></div>
 
-    <script type="text/babel" data-type="module">
-        import { GoogleGenAI, Type } from "@google/genai";
+    <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
         // --- ICONS ---
@@ -154,9 +144,73 @@
         const IconBook = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>;
         const IconShare = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>;
         const IconCheck = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
-        const IconX = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
         const IconDatabase = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>;
         
+        // --- LOCAL SEARCH LOGIC ---
+        class LocalSearchEngine {
+            constructor() {
+                this.entries = [];
+            }
+
+            async loadDatabase() {
+                try {
+                    const response = await fetch('./database.txt');
+                    const text = await response.text();
+                    this.parse(text);
+                    return this.entries.length;
+                } catch (e) {
+                    console.error("Falha ao carregar banco de dados", e);
+                    return 0;
+                }
+            }
+
+            parse(text) {
+                // Splits by '[' to find entries like [GENESIS 1:1]
+                const parts = text.split('[');
+                this.entries = parts.map(part => {
+                    const closeBracket = part.indexOf(']');
+                    if (closeBracket === -1) return null;
+                    
+                    const reference = part.substring(0, closeBracket).trim();
+                    const content = part.substring(closeBracket + 1).trim();
+                    
+                    if (!reference || !content) return null;
+
+                    return {
+                        id: this.normalize(reference),
+                        displayRef: reference,
+                        content: content
+                    };
+                }).filter(Boolean);
+            }
+
+            normalize(str) {
+                return str.toLowerCase()
+                    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Remove accents
+                    .replace(/[^a-z0-9]/g, ""); // Remove spaces and punctuation
+            }
+
+            search(query) {
+                const normalizedQuery = this.normalize(query);
+                // Exact match or partial match
+                const match = this.entries.find(e => e.id.includes(normalizedQuery) || normalizedQuery.includes(e.id));
+                
+                if (match) {
+                    return {
+                        reference: match.displayRef,
+                        summary: "Reflexão sobre " + match.displayRef,
+                        historicalContext: "Passagem extraída do banco de dados local.",
+                        explanation: match.content,
+                        application: "Reflita sobre como este ensinamento se aplica ao seu momento atual de vida.",
+                        reflectionQuestions: ["O que este texto diz ao seu coração hoje?", "Como você pode praticar isso amanhã?"]
+                    };
+                }
+                return null;
+            }
+        }
+
+        const localDB = new LocalSearchEngine();
+
         // --- COMPONENTS ---
 
         const Button = ({ onClick, children, variant = 'primary', className = '', disabled = false }) => {
@@ -201,9 +255,6 @@
         // --- MAIN APP ---
 
         function App() {
-            // Decoded API Key - hidden from plain text scrapers
-            const API_KEY = atob("QUl6YVN5RG1YT05LLWZBQnZCc01uRUF4MlRLYjVDOTRQNFpyU2RZ");
-
             const [mode, setMode] = useState('text'); // 'text' | 'camera'
             const [inputText, setInputText] = useState('');
             const [isLoading, setIsLoading] = useState(false);
@@ -212,49 +263,17 @@
             const [stream, setStream] = useState(null);
             const [onlineCount, setOnlineCount] = useState(45);
             const [toast, setToast] = useState(null);
-            const [apiStatus, setApiStatus] = useState('checking'); // checking, ok, error
-            const [dbContent, setDbContent] = useState(''); // Text File Content
+            const [dbCount, setDbCount] = useState(0);
 
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
 
-            // --- LOAD DATABASE.TXT ---
+            // --- LOAD LOCAL DB ON STARTUP ---
             useEffect(() => {
-                fetch('./database.txt')
-                    .then(response => {
-                        if (response.ok) return response.text();
-                        throw new Error('Database file not found');
-                    })
-                    .then(text => {
-                        if(text.length > 50) { // Check if not empty
-                            setDbContent(text);
-                            console.log("Banco de dados personalizado carregado.");
-                        }
-                    })
-                    .catch(err => console.log("Nenhum banco de dados personalizado encontrado (usando conhecimento geral da IA)."));
-            }, []);
-
-            // --- API VALIDATION ON STARTUP ---
-            useEffect(() => {
-                const checkApiKey = async () => {
-                    try {
-                        if (!API_KEY || API_KEY === 'YOUR_API_KEY_HERE') throw new Error("Key missing");
-                        
-                        // Use a simple string for content to be safe
-                        const ai = new GoogleGenAI({ apiKey: API_KEY });
-                        await ai.models.generateContent({
-                            model: "gemini-2.5-flash",
-                            contents: "Ping", 
-                            config: { maxOutputTokens: 1 }
-                        });
-                        setApiStatus('ok');
-                        console.log("API Key Verified");
-                    } catch (e) {
-                        console.error("API Verification Failed:", e);
-                        setApiStatus('error');
-                    }
-                };
-                checkApiKey();
+                localDB.loadDatabase().then(count => {
+                    setDbCount(count);
+                    console.log(`Banco de dados carregado com ${count} entradas.`);
+                });
             }, []);
 
             // Setup Effects (Counter, Toasts, Service Worker)
@@ -264,7 +283,6 @@
                     navigator.serviceWorker.register('./sw.js')
                         .then(reg => console.log('SW Registered', reg.scope))
                         .catch(err => {
-                            // Suppress detailed errors for Preview environment where SW might be blocked
                             if (err.message && (err.message.includes('origin') || err.message.includes('Script URL'))) {
                                 console.warn('Service Worker registration skipped (Preview Environment).');
                             } else {
@@ -349,11 +367,14 @@
                             if (m.status === 'recognizing text') setStatusText(`Lendo texto: ${Math.round(m.progress * 100)}%`);
                         }
                     });
-                    if (!text.trim()) throw new Error("Nenhum texto detectado.");
-                    setInputText(text);
-                    await generateExplanation(text);
+                    
+                    const cleanText = text.replace(/\n/g, " ").trim();
+                    if (!cleanText || cleanText.length < 3) throw new Error("Nenhum texto detectado.");
+                    
+                    setInputText(cleanText);
+                    await generateExplanation(cleanText);
                 } catch (error) {
-                    alert("Erro no OCR: " + error.message);
+                    alert("Não foi possível ler o texto da imagem. Tente novamente com mais luz.");
                     setIsLoading(false);
                 }
             };
@@ -361,64 +382,25 @@
             const generateExplanation = async (query) => {
                 if (!query) return;
                 
-                if (apiStatus === 'error') {
-                    alert("ERRO CRÍTICO: Sua Chave de API está inválida, expirada ou sem créditos. Por favor, gere uma nova chave no Google AI Studio e atualize o código.");
-                    setIsLoading(false);
-                    return;
-                }
-
                 setIsLoading(true);
-                setStatusText('Consultando sabedoria bíblica...');
+                setStatusText('Pesquisando no banco de dados...');
 
-                try {
-                    const ai = new GoogleGenAI({ apiKey: API_KEY });
-                    const schema = {
-                        type: Type.OBJECT,
-                        properties: {
-                            reference: { type: Type.STRING, description: "Book Chapter:Verse" },
-                            summary: { type: Type.STRING },
-                            historicalContext: { type: Type.STRING },
-                            explanation: { type: Type.STRING },
-                            application: { type: Type.STRING },
-                            reflectionQuestions: { type: Type.ARRAY, items: { type: Type.STRING } }
-                        },
-                        required: ["reference", "summary", "historicalContext", "explanation", "application", "reflectionQuestions"]
-                    };
-
-                    // Construct prompt with Database Content if available
-                    let systemInstruction = "Você é um teólogo especialista moderno.";
-                    
-                    if (dbContent) {
-                        systemInstruction += `\n\nIMPORTANTE: Use o seguinte material de referência (Banco de Dados Personalizado) como base principal para sua explicação sempre que aplicável. Se a passagem não estiver neste material, use seu conhecimento geral.\n\n--- INÍCIO DO BANCO DE DADOS ---\n${dbContent}\n--- FIM DO BANCO DE DADOS ---`;
+                // Simulate processing delay for better UX
+                setTimeout(() => {
+                    const found = localDB.search(query);
+                    if (found) {
+                        setResult(found);
+                    } else {
+                        alert("Passagem não encontrada no banco de dados local. Tente verificar a escrita (ex: 'Gênesis 1:1') ou tente outra passagem disponível.");
                     }
-
-                    const prompt = `Analise a seguinte passagem ou tema: "${query}". Retorne a explicação em formato JSON estruturado.`;
-
-                    const response = await ai.models.generateContent({
-                        model: "gemini-2.5-flash",
-                        contents: prompt,
-                        config: { 
-                            responseMimeType: "application/json", 
-                            responseSchema: schema,
-                            systemInstruction: systemInstruction 
-                        }
-                    });
-
-                    if (response.text) {
-                        setResult(JSON.parse(response.text));
-                    }
-                } catch (error) {
-                    console.error(error);
-                    alert("Erro na IA: " + error.message);
-                } finally {
                     setIsLoading(false);
                     setStatusText('');
-                }
+                }, 800);
             };
 
             const share = (platform) => {
                 if (!result) return;
-                const text = `📖 *${result.reference}*\n\n"${result.summary}"\n\nVeja a explicação em Explicando a Bíblia!`;
+                const text = `📖 *${result.reference}*\n\n"${result.explanation.substring(0, 100)}..."\n\nVeja a explicação em Explicando a Bíblia!`;
                 const url = window.location.href;
                 let link = "";
                 switch(platform) {
@@ -432,22 +414,14 @@
             return (
                 <div className="min-h-screen flex flex-col items-center p-4 md:p-8 max-w-4xl mx-auto relative">
                     
-                    {/* Top Bar: API Status & DB Status */}
+                    {/* Top Bar: DB Status */}
                     <div className="absolute top-4 left-4 flex flex-col gap-1 z-50">
-                        <div className="flex items-center gap-2 bg-slate-900/80 backdrop-blur px-3 py-1 rounded-full border border-slate-700 text-[10px]">
-                            {apiStatus === 'checking' && <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>}
-                            {apiStatus === 'ok' && <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]"></span>}
-                            {apiStatus === 'error' && <span className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
-                            <span className="font-mono text-slate-300">
-                                API: {apiStatus === 'checking' ? 'Validando...' : apiStatus === 'ok' ? 'Online' : 'Erro'}
+                        <div className="flex items-center gap-2 bg-brand-purple/20 backdrop-blur px-3 py-1 rounded-full border border-brand-purple/40 text-[10px]">
+                            <IconDatabase className="w-3 h-3 text-brand-purple" />
+                            <span className="font-mono text-brand-purple">
+                                {dbCount > 0 ? `DB Local: ${dbCount} passagens` : 'Carregando DB...'}
                             </span>
                         </div>
-                        {dbContent && (
-                            <div className="flex items-center gap-2 bg-brand-purple/20 backdrop-blur px-3 py-1 rounded-full border border-brand-purple/40 text-[10px]">
-                                <IconDatabase className="w-3 h-3 text-brand-purple" />
-                                <span className="font-mono text-brand-purple">DB: Carregado</span>
-                            </div>
-                        )}
                     </div>
 
                     {/* Toast Notification */}
@@ -473,7 +447,7 @@
                         <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-2 font-serif">
                             Explicando a <span className="gradient-text">Bíblia</span>
                         </h1>
-                        <p className="text-slate-400 font-light text-lg">Sabedoria milenar para o mundo digital</p>
+                        <p className="text-slate-400 font-light text-lg">Sabedoria milenar offline e gratuita</p>
                     </header>
 
                     {/* Controls */}
@@ -511,15 +485,15 @@
                                         value={inputText}
                                         onChange={(e) => setInputText(e.target.value)}
                                         onKeyDown={(e) => e.key === 'Enter' && generateExplanation(inputText)}
-                                        placeholder="Ex: João 3:16, Salmo 23, Gênesis 1..."
+                                        placeholder="Ex: Gênesis 7:2, Salmos 23..."
                                         className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-6 py-5 pl-14 text-lg text-white placeholder-slate-500 focus:outline-none focus:border-brand-purple focus:ring-1 focus:ring-brand-purple transition-all shadow-inner"
                                     />
                                     <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-brand-purple transition-colors">
                                         <IconSearch />
                                     </div>
                                 </div>
-                                <Button onClick={() => generateExplanation(inputText)} disabled={!inputText || apiStatus === 'error'}>
-                                    Explicar Passagem
+                                <Button onClick={() => generateExplanation(inputText)} disabled={!inputText}>
+                                    Pesquisar no Banco de Dados
                                 </Button>
                             </div>
                         )}
@@ -555,14 +529,11 @@
                             <div className="mt-12 space-y-6 pb-20">
                                 <div className="text-center mb-8 animate-fade-in-up">
                                     <div className="inline-block px-4 py-1.5 rounded-full bg-brand-purple/10 border border-brand-purple/20 text-brand-purple text-xs font-bold uppercase tracking-widest mb-3">
-                                        Análise Completa
+                                        Resultado Local
                                     </div>
                                     <h2 className="text-3xl md:text-4xl font-bold font-serif text-white">{result.reference}</h2>
                                 </div>
 
-                                <Card title="Resumo Moderno" content={result.summary} color="border-brand-gold" delay={100} />
-                                <Card title="Contexto Histórico" content={result.historicalContext} color="border-brand-blue" delay={200} />
-                                
                                 <div className="glass-panel rounded-2xl p-8 border-t-4 border-brand-purple shadow-2xl shadow-brand-purple/10 animate-[fadeInUp_0.8s_ease-out_forwards]">
                                     <h3 className="text-2xl font-bold mb-6 text-white font-serif">Explicação</h3>
                                     <p className="text-lg text-slate-200 leading-relaxed whitespace-pre-wrap">
@@ -570,6 +541,7 @@
                                     </p>
                                 </div>
 
+                                <Card title="Resumo" content={result.summary} color="border-brand-gold" delay={100} />
                                 <Card title="Aplicação Prática" content={result.application} color="border-brand-green" delay={300} />
                                 <Card title="Para Reflexão" content={result.reflectionQuestions} color="border-purple-400" delay={400} />
 
