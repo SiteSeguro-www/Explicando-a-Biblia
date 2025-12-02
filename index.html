@@ -54,6 +54,7 @@
                         'gradient': 'gradient 8s linear infinite',
                         'float': 'float 6s ease-in-out infinite',
                         'fade-in-up': 'fadeInUp 0.5s ease-out forwards',
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                     },
                     keyframes: {
                         gradient: {
@@ -112,12 +113,28 @@
             box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
         }
 
+        .premium-glass {
+            background: rgba(20, 10, 30, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(251, 191, 36, 0.3);
+            box-shadow: 0 0 50px rgba(251, 191, 36, 0.15);
+        }
+
         .gradient-text {
             background: linear-gradient(to right, #60a5fa, #34d399, #a78bfa, #ffffff);
             background-size: 200% auto;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             animation: gradient 8s linear infinite;
+        }
+
+        .premium-text {
+            background: linear-gradient(to right, #fbbf24, #fbbf24, #f59e0b, #fbbf24);
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: gradient 4s linear infinite;
         }
 
         .btn-gradient {
@@ -128,6 +145,31 @@
             filter: brightness(1.1);
             transform: translateY(-2px);
             box-shadow: 0 10px 20px -10px rgba(14, 165, 233, 0.5);
+        }
+
+        .btn-premium {
+            background: linear-gradient(45deg, #d97706, #fbbf24, #f59e0b);
+            color: #020617;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-premium::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+            transition: 0.5s;
+        }
+        .btn-premium:hover::after {
+            left: 100%;
+        }
+        .btn-premium:hover {
+            transform: scale(1.02);
+            box-shadow: 0 0 30px rgba(251, 191, 36, 0.4);
         }
     </style>
 </head>
@@ -144,8 +186,9 @@
         const IconBook = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>;
         const IconShare = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>;
         const IconCheck = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
-        const IconDatabase = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>;
-        
+        const IconLock = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
+        const IconStar = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
+
         // --- LOCAL SEARCH LOGIC ---
         class LocalSearchEngine {
             constructor() {
@@ -165,7 +208,6 @@
             }
 
             parse(text) {
-                // Splits by '[' to find entries like [GENESIS 1:1]
                 const parts = text.split('[');
                 this.entries = parts.map(part => {
                     const closeBracket = part.indexOf(']');
@@ -186,13 +228,12 @@
 
             normalize(str) {
                 return str.toLowerCase()
-                    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Remove accents
-                    .replace(/[^a-z0-9]/g, ""); // Remove spaces and punctuation
+                    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") 
+                    .replace(/[^a-z0-9]/g, ""); 
             }
 
             search(query) {
                 const normalizedQuery = this.normalize(query);
-                // Exact match or partial match
                 const match = this.entries.find(e => e.id.includes(normalizedQuery) || normalizedQuery.includes(e.id));
                 
                 if (match) {
@@ -217,6 +258,7 @@
             const baseClass = "px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed";
             const variants = {
                 primary: "btn-gradient text-white shadow-lg",
+                premium: "btn-premium text-black font-bold shadow-xl",
                 secondary: "bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700",
                 outline: "border-2 border-slate-700 text-slate-300 hover:border-brand-purple hover:text-brand-purple bg-transparent"
             };
@@ -255,7 +297,7 @@
         // --- MAIN APP ---
 
         function App() {
-            const [mode, setMode] = useState('text'); // 'text' | 'camera'
+            const [mode, setMode] = useState('text'); 
             const [inputText, setInputText] = useState('');
             const [isLoading, setIsLoading] = useState(false);
             const [statusText, setStatusText] = useState('');
@@ -263,35 +305,31 @@
             const [stream, setStream] = useState(null);
             const [onlineCount, setOnlineCount] = useState(45);
             const [toast, setToast] = useState(null);
-            const [dbCount, setDbCount] = useState(0);
+            
+            // Premium Logic
+            // 5 Free usages
+            const FREE_LIMIT = 5;
+            const [usageCount, setUsageCount] = useState(() => parseInt(localStorage.getItem('bible_usage_count') || '0'));
+            const [isPremium, setIsPremium] = useState(() => localStorage.getItem('bible_is_premium') === 'true');
+            const [showPaywall, setShowPaywall] = useState(false);
 
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
 
-            // --- LOAD LOCAL DB ON STARTUP ---
             useEffect(() => {
                 localDB.loadDatabase().then(count => {
-                    setDbCount(count);
                     console.log(`Banco de dados carregado com ${count} entradas.`);
                 });
-            }, []);
+                
+                // Save usage to storage
+                localStorage.setItem('bible_usage_count', usageCount);
+            }, [usageCount]);
 
-            // Setup Effects (Counter, Toasts, Service Worker)
             useEffect(() => {
-                // Register Service Worker for Monetag
                 if ('serviceWorker' in navigator) {
-                    navigator.serviceWorker.register('./sw.js')
-                        .then(reg => console.log('SW Registered', reg.scope))
-                        .catch(err => {
-                            if (err.message && (err.message.includes('origin') || err.message.includes('Script URL'))) {
-                                console.warn('Service Worker registration skipped (Preview Environment).');
-                            } else {
-                                console.error('SW Failed', err);
-                            }
-                        });
+                    navigator.serviceWorker.register('./sw.js').catch(() => {});
                 }
 
-                // Fake Online Counter
                 const interval = setInterval(() => {
                     setOnlineCount(prev => {
                         let change = Math.floor(Math.random() * 6) - 3; 
@@ -300,27 +338,61 @@
                     });
                 }, 4000);
 
-                // Social Proof Toasts
-                const names = ["Ricardo - SP", "João - MG", "Maria - RJ", "Felipe - RS", "Ana - BA", "Lucas - PR", "Gabriel - SC", "Beatriz - SP"];
-                const actions = ["buscou Salmos 23", "leu João 3:16", "pediu explicação", "usou a câmera", "compartilhou versículo"];
+                const names = ["Ricardo - SP", "João - MG", "Maria - RJ", "Felipe - RS", "Ana - BA", "Lucas - PR"];
+                const actions = ["buscou Salmos 23", "leu João 3:16", "virou Premium", "usou a câmera"];
                 
                 const showToast = () => {
+                    if(showPaywall) return; 
                     const name = names[Math.floor(Math.random() * names.length)];
                     const action = actions[Math.floor(Math.random() * actions.length)];
                     setToast({ name, action });
                     setTimeout(() => setToast(null), 4000);
                 };
 
-                const initialTimeout = setTimeout(showToast, 3000);
                 const toastInterval = setInterval(showToast, Math.random() * 8000 + 10000);
 
                 return () => {
                     clearInterval(interval);
-                    clearTimeout(initialTimeout);
                     clearInterval(toastInterval);
                     stopCamera();
                 };
-            }, []);
+            }, [showPaywall]);
+
+            // Sound Effect for Paywall
+            const playPaywallSound = () => {
+                try {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if (!AudioContext) return;
+                    const ctx = new AudioContext();
+                    
+                    const playNote = (freq, time, type = 'sine') => {
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.type = type;
+                        osc.frequency.value = freq;
+                        gain.gain.setValueAtTime(0.1, time);
+                        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.5);
+                        osc.start(time);
+                        osc.stop(time + 0.5);
+                    };
+
+                    const now = ctx.currentTime;
+                    // Play a "Magical/Success" chord (C Major)
+                    playNote(523.25, now, 'triangle'); // C5
+                    playNote(659.25, now + 0.1, 'triangle'); // E5
+                    playNote(783.99, now + 0.2, 'triangle'); // G5
+                    playNote(1046.50, now + 0.3, 'triangle'); // C6
+                } catch (e) {}
+            };
+
+            const unlockPremium = () => {
+                setIsPremium(true);
+                setShowPaywall(false);
+                localStorage.setItem('bible_is_premium', 'true');
+                alert("Plano Premium ativado! Obrigado.");
+            };
 
             const stopCamera = () => {
                 if (stream) {
@@ -330,6 +402,13 @@
             };
 
             const startCamera = async () => {
+                // Check limit before starting camera
+                if (!isPremium && usageCount >= FREE_LIMIT) {
+                    playPaywallSound();
+                    setShowPaywall(true);
+                    return;
+                }
+
                 setResult(null);
                 setMode('camera');
                 try {
@@ -374,24 +453,34 @@
                     setInputText(cleanText);
                     await generateExplanation(cleanText);
                 } catch (error) {
-                    alert("Não foi possível ler o texto da imagem. Tente novamente com mais luz.");
+                    alert("Não foi possível ler o texto. Tente novamente.");
                     setIsLoading(false);
                 }
             };
 
             const generateExplanation = async (query) => {
                 if (!query) return;
+
+                // PAYWALL CHECK
+                if (!isPremium && usageCount >= FREE_LIMIT) {
+                    playPaywallSound();
+                    setShowPaywall(true);
+                    return;
+                }
                 
                 setIsLoading(true);
                 setStatusText('Pesquisando no banco de dados...');
 
-                // Simulate processing delay for better UX
                 setTimeout(() => {
                     const found = localDB.search(query);
                     if (found) {
                         setResult(found);
+                        // Increment usage
+                        if (!isPremium) {
+                            setUsageCount(prev => prev + 1);
+                        }
                     } else {
-                        alert("Passagem não encontrada no banco de dados local. Tente verificar a escrita (ex: 'Gênesis 1:1') ou tente outra passagem disponível.");
+                        alert("Passagem não encontrada. Tente verificar a escrita.");
                     }
                     setIsLoading(false);
                     setStatusText('');
@@ -414,9 +503,62 @@
             return (
                 <div className="min-h-screen flex flex-col items-center p-4 md:p-8 max-w-4xl mx-auto relative">
                     
-                    {/* Toast Notification */}
-                    {toast && (
-                        <div className="fixed top-4 right-4 z-50 animate-fade-in-up">
+                    {/* PAYWALL MODAL */}
+                    {showPaywall && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in-up">
+                            <div className="premium-glass max-w-md w-full rounded-3xl p-8 relative overflow-hidden border-2 border-brand-gold/50">
+                                
+                                {/* Gold Glow Effect */}
+                                <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] bg-brand-gold/10 rounded-full blur-[80px] pointer-events-none animate-pulse-slow"></div>
+                                
+                                <div className="relative z-10 text-center">
+                                    <div className="mx-auto w-16 h-16 bg-gradient-to-br from-yellow-400 to-amber-600 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-brand-gold/30 animate-[float_3s_ease-in-out_infinite]">
+                                        <IconStar className="text-white w-8 h-8" />
+                                    </div>
+                                    
+                                    <h2 className="text-3xl font-serif font-bold text-white mb-2">Plano Premium</h2>
+                                    <p className="text-amber-200 text-sm font-medium uppercase tracking-widest mb-6">Acesso Ilimitado</p>
+                                    
+                                    <div className="bg-black/40 rounded-xl p-4 mb-6 border border-white/10 text-left space-y-3">
+                                        <div className="flex items-center gap-3 text-gray-300">
+                                            <IconCheck className="text-brand-gold" /> <span>Explicações Ilimitadas</span>
+                                        </div>
+                                        <div className="flex items-center gap-3 text-gray-300">
+                                            <IconCheck className="text-brand-gold" /> <span>Sem Anúncios</span>
+                                        </div>
+                                        <div className="flex items-center gap-3 text-gray-300">
+                                            <IconCheck className="text-brand-gold" /> <span>Acesso Prioritário</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="mb-8">
+                                        <span className="text-5xl font-bold text-white">R$ 9,90</span>
+                                        <span className="text-gray-400 text-sm block mt-1">Pagamento único</span>
+                                    </div>
+
+                                    <a 
+                                        href="https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=8857fb1eaa0d4c72850b91fc40d2e874" 
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="w-full py-4 rounded-xl font-bold text-lg btn-premium flex items-center justify-center gap-2 shadow-2xl mb-3"
+                                    >
+                                        Quero ser Premium <IconStar className="w-5 h-5" />
+                                    </a>
+
+                                    <button 
+                                        onClick={unlockPremium}
+                                        className="text-xs text-gray-500 hover:text-white underline transition-colors"
+                                    >
+                                        Já realizei o pagamento / Liberar Acesso
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Toast */}
+                    {toast && !showPaywall && (
+                        <div className="fixed top-4 right-4 z-40 animate-fade-in-up">
                             <div className="flex items-center gap-3 glass-panel px-4 py-3 rounded-xl">
                                 <div className="bg-brand-green/20 p-1.5 rounded-full">
                                     <IconBook className="w-4 h-4 text-brand-green" />
@@ -431,13 +573,26 @@
 
                     {/* Header */}
                     <header className="text-center mb-10 mt-6 animate-[float_6s_ease-in-out_infinite]">
-                        <div className="w-16 h-16 bg-gradient-to-br from-brand-purple to-brand-blue rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-brand-purple/20 rotate-3 hover:rotate-6 transition-transform">
-                            <IconBook className="text-white w-8 h-8" />
+                        <div className="relative inline-block">
+                            <div className="w-16 h-16 bg-gradient-to-br from-brand-purple to-brand-blue rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-brand-purple/20 rotate-3 hover:rotate-6 transition-transform">
+                                <IconBook className="text-white w-8 h-8" />
+                            </div>
+                            {isPremium && (
+                                <div className="absolute -top-2 -right-2 bg-brand-gold text-black text-[10px] font-bold px-2 py-1 rounded-full shadow-lg animate-pulse">
+                                    PREMIUM
+                                </div>
+                            )}
                         </div>
                         <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-2 font-serif">
                             Explicando a <span className="gradient-text">Bíblia</span>
                         </h1>
                         <p className="text-slate-400 font-light text-lg">Sabedoria milenar offline e gratuita</p>
+                        
+                        {!isPremium && (
+                            <div className="mt-2 text-xs font-mono text-slate-500">
+                                Restam: <span className="text-brand-gold font-bold">{Math.max(0, FREE_LIMIT - usageCount)}</span> consultas gratuitas
+                            </div>
+                        )}
                     </header>
 
                     {/* Controls */}
@@ -456,10 +611,9 @@
                         </button>
                     </div>
 
-                    {/* Main Content Area */}
+                    {/* Main Content */}
                     <main className="w-full max-w-2xl relative">
                         
-                        {/* Loading Overlay */}
                         {isLoading && (
                             <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm rounded-3xl animate-[fade-in_0.3s]">
                                 <div className="w-16 h-16 border-4 border-brand-purple border-t-transparent rounded-full animate-spin mb-4"></div>
@@ -483,7 +637,11 @@
                                     </div>
                                 </div>
                                 <Button onClick={() => generateExplanation(inputText)} disabled={!inputText}>
-                                    Explicar Passagem
+                                    {!isPremium && usageCount >= FREE_LIMIT ? (
+                                        <><IconLock className="w-4 h-4" /> Desbloquear Premium</>
+                                    ) : (
+                                        "Explicar Passagem"
+                                    )}
                                 </Button>
                             </div>
                         )}
@@ -535,7 +693,6 @@
                                 <Card title="Aplicação Prática" content={result.application} color="border-brand-green" delay={300} />
                                 <Card title="Para Reflexão" content={result.reflectionQuestions} color="border-purple-400" delay={400} />
 
-                                {/* Social Share */}
                                 <div className="flex justify-center gap-4 mt-8 pt-8 border-t border-slate-800">
                                     <button onClick={() => share('whatsapp')} className="p-3 bg-[#25D366]/20 hover:bg-[#25D366]/30 text-[#25D366] rounded-xl transition-colors">
                                         <IconShare />
@@ -551,7 +708,6 @@
                         )}
                     </main>
                     
-                    {/* Footer - Online Counter */}
                     <footer className="mt-12 text-center pb-8 animate-fade-in-up">
                         <div className="flex items-center justify-center gap-2 text-slate-500 text-sm">
                             <span className="relative flex h-2 w-2">
