@@ -91,17 +91,6 @@
     }
     </script>
 
-    <!-- Polyfill for process.env with Obfuscated API Key -->
-    <script>
-        // Simple Base64 decoding to hide key from plain text crawlers
-        const _k = "QUl6YVN5REZSaGFoYkJ3TXMxNE1rekwxQTMzeVdYWGg0NW9ta3M=";
-        window.process = {
-            env: {
-                API_KEY: atob(_k)
-            }
-        };
-    </script>
-
     <style>
         body {
             background-color: #020617;
@@ -211,6 +200,9 @@
         // --- MAIN APP ---
 
         function App() {
+            // Decoded API Key - hidden from plain text scrapers
+            const API_KEY = atob("QUl6YVN5REZSaGFoYkJ3TXMxNE1rekwxQTMzeVdYWGg0NW9ta3M=");
+
             const [mode, setMode] = useState('text'); // 'text' | 'camera'
             const [inputText, setInputText] = useState('');
             const [isLoading, setIsLoading] = useState(false);
@@ -228,10 +220,9 @@
             useEffect(() => {
                 const checkApiKey = async () => {
                     try {
-                        const apiKey = process.env.API_KEY;
-                        if (!apiKey || apiKey === 'YOUR_API_KEY_HERE') throw new Error("Key missing");
+                        if (!API_KEY || API_KEY === 'YOUR_API_KEY_HERE') throw new Error("Key missing");
                         
-                        const ai = new GoogleGenAI({ apiKey: apiKey });
+                        const ai = new GoogleGenAI({ apiKey: API_KEY });
                         // Minimal request to verify key
                         await ai.models.generateContent({
                             model: "gemini-2.5-flash",
@@ -350,7 +341,6 @@
 
             const generateExplanation = async (query) => {
                 if (!query) return;
-                const apiKey = process.env.API_KEY;
                 
                 if (apiStatus === 'error') {
                     alert("ERRO: A Chave de API é inválida ou expirou. Verifique o console.");
@@ -362,7 +352,7 @@
                 setStatusText('Consultando sabedoria bíblica...');
 
                 try {
-                    const ai = new GoogleGenAI({ apiKey: apiKey });
+                    const ai = new GoogleGenAI({ apiKey: API_KEY });
                     const schema = {
                         type: Type.OBJECT,
                         properties: {
