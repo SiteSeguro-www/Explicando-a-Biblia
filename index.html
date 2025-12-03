@@ -24,15 +24,6 @@
       gtag('config', 'G-F2G3BLR9FC');
     </script>
     
-    <!-- Google GenAI SDK Import Map -->
-    <script type="importmap">
-      {
-        "imports": {
-          "@google/genai": "https://esm.run/@google/genai"
-        }
-      }
-    </script>
-
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -91,13 +82,6 @@
 
     <!-- Tesseract.js -->
     <script src="https://unpkg.com/tesseract.js@v5.0.3/dist/tesseract.min.js"></script>
-
-    <!-- Pre-load GenAI to window to avoid Babel import errors -->
-    <script type="module">
-      import { GoogleGenAI, Type } from "@google/genai";
-      window.GenAI = { GoogleGenAI, Type };
-      console.log("Google GenAI SDK loaded.");
-    </script>
 
     <style>
         body {
@@ -213,20 +197,14 @@
         // --- SECURITY CONFIG ---
         // Obfuscated Key Reconstruction to prevent simple scraping
         const getSecureKeys = () => {
-            const p1 = "AIzaSyDm"; const p2 = "XONK-fABv"; const p3 = "BsMnEAx2"; const p4 = "TKb5C98P"; const p5 = "4ZrSdY";
-            const k1 = p1 + p2 + p3 + p4 + p5;
-            
-            const q1 = "AIzaSyDF"; const q2 = "RhahbBwM"; const q3 = "s14MkzL1"; const q4 = "A33yWOXh"; const q5 = "X45omks";
-            const k2 = q1 + q2 + q3 + q4 + q5;
-            
-            const r1 = "AIzaSyDy"; const r2 = "Y6gAPsWR"; const r3 = "TyDJgMk9"; const r4 = "I4SgJQqX"; const r5 = "6o_Bz_s";
-            const k3 = r1 + r2 + r3 + r4 + r5;
+            // Groq Key (Primary)
+            const g1 = "gsk_m8I1"; const g2 = "Gv9gOXxk"; const g3 = "MbKSpVHp"; const g4 = "WGdyb3FY"; 
+            const g5 = "rS8ywf3S"; const g6 = "DgEx1mHg"; const g7 = "MncEahFF";
+            const k1 = g1 + g2 + g3 + g4 + g5 + g6 + g7;
 
-            // Return encoded keys array for rotation
+            // Return encoded keys array for rotation (Base64 encoded for uniformity)
             return [
-                btoa(k1), // Re-encode to Base64 to match app logic
-                btoa(k2),
-                btoa(k3)
+                btoa(k1)
             ];
         };
 
@@ -555,41 +533,7 @@
                 let success = false;
                 let lastError = null;
 
-                // Schema for JSON response
-                // Use window.GenAI loaded from the module script
-                if (!window.GenAI) {
-                    alert("SDK do Google não carregado.");
-                    setIsLoading(false);
-                    return;
-                }
-                
-                const { GoogleGenAI, Type } = window.GenAI;
-
-                const schema = {
-                    type: Type.OBJECT,
-                    properties: {
-                        reference: { type: Type.STRING },
-                        summary: { type: Type.STRING },
-                        historicalContext: { type: Type.STRING },
-                        explanation: { type: Type.STRING },
-                        application: { type: Type.STRING },
-                        reflectionQuestions: { 
-                            type: Type.ARRAY, 
-                            items: { type: Type.STRING } 
-                        }
-                    },
-                    required: ["reference", "summary", "historicalContext", "explanation", "application", "reflectionQuestions"]
-                };
-
-                // TRY KEYS SEQUENTIALLY
-                for (const encodedKey of ENCODED_KEYS) {
-                    try {
-                        const apiKey = atob(encodedKey);
-                        const ai = new GoogleGenAI({ apiKey: apiKey });
-                        
-                        const response = await ai.models.generateContent({
-                            model: 'gemini-2.5-flash',
-                            contents: `Atue como um teólogo moderno e inspirador. Explique a passagem bíblica: "${query}".
+                const promptContent = `Atue como um teólogo moderno e inspirador. Explique a passagem bíblica: "${query}".
                             Traga uma visão clara, motivadora e aplicada aos dias de hoje.
                             O output DEVE ser um JSON estrito com os campos:
                             1. reference (Referência correta)
@@ -597,15 +541,36 @@
                             3. historicalContext (Contexto histórico breve)
                             4. explanation (Explicação teológica profunda)
                             5. application (Aplicação prática para o dia a dia)
-                            6. reflectionQuestions (Array com duas perguntas para reflexão pessoal)`,
-                            config: {
-                                responseMimeType: "application/json",
-                                responseSchema: schema
-                            }
+                            6. reflectionQuestions (Array com duas perguntas para reflexão pessoal)`;
+
+                // TRY KEYS SEQUENTIALLY (Only Groq now)
+                for (const encodedKey of ENCODED_KEYS) {
+                    try {
+                        const apiKey = atob(encodedKey);
+                        let jsonResult;
+
+                        // GROQ PROVIDER (Exclusive)
+                        console.log("Usando provedor: Groq");
+                        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${apiKey}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                model: "llama3-8b-8192",
+                                messages: [{
+                                    role: "user",
+                                    content: promptContent + " Retorne APENAS o JSON."
+                                }],
+                                response_format: { type: "json_object" }
+                            })
                         });
 
-                        const text = response.text;
-                        const jsonResult = JSON.parse(text);
+                        if (!response.ok) throw new Error(`Groq API Error: ${response.status}`);
+                        const data = await response.json();
+                        jsonResult = JSON.parse(data.choices[0].message.content);
+
                         
                         setResult(jsonResult);
                         if (!isPremium) setUsageCount(prev => prev + 1);
@@ -613,7 +578,7 @@
                         break; // Exit loop on success
 
                     } catch (error) {
-                        console.warn("Falha na chave API, tentando próxima...", error);
+                        console.warn("Falha na chave, tentando próxima...", error);
                         lastError = error;
                         // Continue to next key
                     }
