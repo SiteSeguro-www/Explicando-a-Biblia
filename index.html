@@ -533,16 +533,6 @@
                 let success = false;
                 let lastError = null;
 
-                const promptContent = `Atue como um teólogo moderno e inspirador. Explique a passagem bíblica: "${query}".
-                            Traga uma visão clara, motivadora e aplicada aos dias de hoje.
-                            O output DEVE ser um JSON estrito com os campos:
-                            1. reference (Referência correta)
-                            2. summary (Resumo moderno e conciso)
-                            3. historicalContext (Contexto histórico breve)
-                            4. explanation (Explicação teológica profunda)
-                            5. application (Aplicação prática para o dia a dia)
-                            6. reflectionQuestions (Array com duas perguntas para reflexão pessoal)`;
-
                 // TRY KEYS SEQUENTIALLY (Only Groq now)
                 for (const encodedKey of ENCODED_KEYS) {
                     try {
@@ -558,12 +548,31 @@
                                 'Content-Type': 'application/json'
                             },
                             body: JSON.stringify({
-                                model: "llama3-8b-8192",
-                                messages: [{
-                                    role: "user",
-                                    content: promptContent + " Retorne APENAS o JSON."
-                                }],
-                                response_format: { type: "json_object" }
+                                model: "llama-3.3-70b-versatile", // Updated model for better stability
+                                messages: [
+                                    {
+                                        role: "system",
+                                        content: `Você é um teólogo moderno e inspirador. 
+                                        Seu objetivo é explicar passagens bíblicas de forma clara, motivadora e aplicada aos dias de hoje.
+                                        RESPONDA APENAS COM UM OBJETO JSON VÁLIDO. 
+                                        NÃO USE MARKDOWN. NÃO USE BLOCOS DE CÓDIGO.
+                                        Estrutura do JSON:
+                                        {
+                                            "reference": "Referência correta",
+                                            "summary": "Resumo moderno e conciso",
+                                            "historicalContext": "Contexto histórico breve",
+                                            "explanation": "Explicação teológica profunda",
+                                            "application": "Aplicação prática para o dia a dia",
+                                            "reflectionQuestions": ["Pergunta 1", "Pergunta 2"]
+                                        }`
+                                    },
+                                    {
+                                        role: "user",
+                                        content: `Explique a passagem bíblica: "${query}"`
+                                    }
+                                ],
+                                response_format: { type: "json_object" },
+                                temperature: 0.7
                             })
                         });
 
