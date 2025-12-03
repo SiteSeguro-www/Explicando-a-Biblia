@@ -23,6 +23,15 @@
       gtag('js', new Date());
       gtag('config', 'G-F2G3BLR9FC');
     </script>
+    
+    <!-- Google GenAI SDK Import Map -->
+    <script type="importmap">
+      {
+        "imports": {
+          "@google/genai": "https://esm.run/@google/genai"
+        }
+      }
+    </script>
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -82,6 +91,13 @@
 
     <!-- Tesseract.js -->
     <script src="https://unpkg.com/tesseract.js@v5.0.3/dist/tesseract.min.js"></script>
+
+    <!-- Pre-load GenAI to window to avoid Babel import errors -->
+    <script type="module">
+      import { GoogleGenAI, Type } from "@google/genai";
+      window.GenAI = { GoogleGenAI, Type };
+      console.log("Google GenAI SDK loaded.");
+    </script>
 
     <style>
         body {
@@ -194,6 +210,23 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
+        // --- CONFIG ---
+        // Base64 Encoded API Key (Default)
+        const ENCODED_KEY = "QUl6YVN5RG1YT05LLWZBQnZCc01uRUF4MlRLYjVDOTRQNFpyU2RZ";
+        
+        const getApiKey = () => {
+            // First check if user has provided a custom key to override the leaked one
+            const customKey = localStorage.getItem('bible_custom_api_key');
+            if (customKey) return customKey;
+
+            try {
+                return atob(ENCODED_KEY);
+            } catch (e) {
+                console.error("Erro ao decodificar chave:", e);
+                return "";
+            }
+        };
+
         // --- ICONS ---
         const IconSearch = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>;
         const IconCamera = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>;
@@ -202,71 +235,9 @@
         const IconCheck = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
         const IconLock = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
         const IconStar = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
-        const IconClock = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
         const IconShield = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;
+        const IconAlert = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>;
 
-        // --- LOCAL SEARCH LOGIC ---
-        class LocalSearchEngine {
-            constructor() {
-                this.entries = [];
-            }
-
-            async loadDatabase() {
-                try {
-                    const response = await fetch('./database.txt');
-                    const text = await response.text();
-                    this.parse(text);
-                    return this.entries.length;
-                } catch (e) {
-                    console.error("Falha ao carregar banco de dados", e);
-                    return 0;
-                }
-            }
-
-            parse(text) {
-                const parts = text.split('[');
-                this.entries = parts.map(part => {
-                    const closeBracket = part.indexOf(']');
-                    if (closeBracket === -1) return null;
-                    
-                    const reference = part.substring(0, closeBracket).trim();
-                    const content = part.substring(closeBracket + 1).trim();
-                    
-                    if (!reference || !content) return null;
-
-                    return {
-                        id: this.normalize(reference),
-                        displayRef: reference,
-                        content: content
-                    };
-                }).filter(Boolean);
-            }
-
-            normalize(str) {
-                return str.toLowerCase()
-                    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") 
-                    .replace(/[^a-z0-9]/g, ""); 
-            }
-
-            search(query) {
-                const normalizedQuery = this.normalize(query);
-                const match = this.entries.find(e => e.id.includes(normalizedQuery) || normalizedQuery.includes(e.id));
-                
-                if (match) {
-                    return {
-                        reference: match.displayRef,
-                        summary: "Reflexão sobre " + match.displayRef,
-                        historicalContext: "Passagem extraída do banco de dados local.",
-                        explanation: match.content,
-                        application: "Reflita sobre como este ensinamento se aplica ao seu momento atual de vida.",
-                        reflectionQuestions: ["O que este texto diz ao seu coração hoje?", "Como você pode praticar isso amanhã?"]
-                    };
-                }
-                return null;
-            }
-        }
-
-        const localDB = new LocalSearchEngine();
 
         // --- COMPONENTS ---
 
@@ -334,7 +305,6 @@
             const [toast, setToast] = useState(null);
             
             // Premium Logic
-            // 5 Free usages
             const FREE_LIMIT = 5;
             const PENDING_TIME_MS = 20 * 60 * 1000; // 20 minutes in ms
 
@@ -347,15 +317,15 @@
             
             const [showPaywall, setShowPaywall] = useState(false);
             const [timeLeft, setTimeLeft] = useState(null);
+            
+            // API Key Recovery
+            const [showKeyModal, setShowKeyModal] = useState(false);
+            const [customKeyInput, setCustomKeyInput] = useState("");
 
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
 
             useEffect(() => {
-                localDB.loadDatabase().then(count => {
-                    console.log(`Banco de dados carregado com ${count} entradas.`);
-                });
-                
                 // Save usage to storage
                 localStorage.setItem('bible_usage_count', usageCount);
             }, [usageCount]);
@@ -396,7 +366,7 @@
 
             }, [paymentPendingTime, isPremium]);
 
-            // Subscriber Counter Effect - Much Slower (4.5 seconds) and Persisted
+            // Subscriber Counter Effect - Persisted
             useEffect(() => {
                 const subInterval = setInterval(() => {
                     setSubscriberCount(prev => {
@@ -404,12 +374,8 @@
                             clearInterval(subInterval);
                             return 10000;
                         }
-                        // Increment randomly to look natural but move steadily
                         const next = prev + Math.floor(Math.random() * 15) + 3; 
-                        
-                        // Persist new value
                         localStorage.setItem('bible_subscriber_count', next.toString());
-                        
                         return next;
                     });
                 }, 4500);
@@ -417,8 +383,11 @@
             }, []);
 
             useEffect(() => {
+                // Service Worker Registration Check
                 if ('serviceWorker' in navigator) {
-                    navigator.serviceWorker.register('./sw.js').catch(() => {});
+                    navigator.serviceWorker.register('./sw.js')
+                        .then(reg => console.log("Service Worker de Ads registrado com sucesso:", reg))
+                        .catch(err => console.warn("Falha ao registrar Service Worker de Ads:", err));
                 }
 
                 const interval = setInterval(() => {
@@ -433,7 +402,7 @@
                 const actions = ["buscou Salmos 23", "leu João 3:16", "virou Premium", "usou a câmera"];
                 
                 const showToast = () => {
-                    if(showPaywall) return; 
+                    if(showPaywall || showKeyModal) return; 
                     const name = names[Math.floor(Math.random() * names.length)];
                     const action = actions[Math.floor(Math.random() * actions.length)];
                     setToast({ name, action });
@@ -447,9 +416,8 @@
                     clearInterval(toastInterval);
                     stopCamera();
                 };
-            }, [showPaywall]);
+            }, [showPaywall, showKeyModal]);
 
-            // Sound Effect for Paywall Alert
             const playPaywallSound = () => {
                 try {
                     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -460,34 +428,19 @@
                     osc.connect(gain);
                     gain.connect(ctx.destination);
                     osc.type = 'sine';
-                    osc.frequency.value = 440; // A4
+                    osc.frequency.value = 440; 
                     gain.gain.setValueAtTime(0.1, ctx.currentTime);
                     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
                     osc.start();
                     osc.stop(ctx.currentTime + 0.5);
-                    
-                    setTimeout(() => {
-                        const osc2 = ctx.createOscillator();
-                        const gain2 = ctx.createGain();
-                        osc2.connect(gain2);
-                        gain2.connect(ctx.destination);
-                        osc2.type = 'triangle';
-                        osc2.frequency.value = 349.23; // F4
-                        gain2.gain.setValueAtTime(0.1, ctx.currentTime);
-                        gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
-                        osc2.start();
-                        osc2.stop(ctx.currentTime + 0.5);
-                    }, 200);
                 } catch (e) {}
             };
 
-            // Success Sound for Unlock
             const playSuccessSound = () => {
                 try {
                     const AudioContext = window.AudioContext || window.webkitAudioContext;
                     if (!AudioContext) return;
                     const ctx = new AudioContext();
-                    
                     const playNote = (freq, time) => {
                         const osc = ctx.createOscillator();
                         const gain = ctx.createGain();
@@ -501,10 +454,10 @@
                         osc.stop(time + 0.8);
                     };
                     const now = ctx.currentTime;
-                    playNote(523.25, now); // C5
-                    playNote(659.25, now + 0.15); // E5
-                    playNote(783.99, now + 0.30); // G5
-                    playNote(1046.50, now + 0.45); // C6
+                    playNote(523.25, now); 
+                    playNote(659.25, now + 0.15); 
+                    playNote(783.99, now + 0.30); 
+                    playNote(1046.50, now + 0.45); 
                 } catch(e) {}
             };
 
@@ -512,7 +465,16 @@
                 const now = Date.now();
                 setPaymentPendingTime(now);
                 localStorage.setItem('bible_payment_pending_since', now.toString());
-                // Do NOT close modal, just update UI to show timer
+            };
+
+            const handleSaveNewKey = () => {
+                if (customKeyInput.trim().length > 10) {
+                    localStorage.setItem('bible_custom_api_key', customKeyInput.trim());
+                    setShowKeyModal(false);
+                    alert("Nova chave salva! Tente explicar a passagem novamente.");
+                } else {
+                    alert("Chave inválida. Verifique se copiou corretamente.");
+                }
             };
 
             const formatTime = (ms) => {
@@ -597,22 +559,72 @@
                 }
                 
                 setIsLoading(true);
-                setStatusText('Pesquisando no banco de dados...');
+                setStatusText('Conectando à Inteligência Artificial...');
 
-                setTimeout(() => {
-                    const found = localDB.search(query);
-                    if (found) {
-                        setResult(found);
-                        // Increment usage
-                        if (!isPremium) {
-                            setUsageCount(prev => prev + 1);
+                try {
+                    const apiKey = getApiKey();
+                    if (!apiKey) throw new Error("Chave de API não configurada.");
+
+                    // Use window.GenAI loaded from the module script
+                    if (!window.GenAI) throw new Error("SDK do Google não carregado.");
+                    
+                    const { GoogleGenAI, Type } = window.GenAI;
+                    const ai = new GoogleGenAI({ apiKey: apiKey });
+                    
+                    // Schema for JSON response
+                    const schema = {
+                        type: Type.OBJECT,
+                        properties: {
+                            reference: { type: Type.STRING },
+                            summary: { type: Type.STRING },
+                            historicalContext: { type: Type.STRING },
+                            explanation: { type: Type.STRING },
+                            application: { type: Type.STRING },
+                            reflectionQuestions: { 
+                                type: Type.ARRAY, 
+                                items: { type: Type.STRING } 
+                            }
+                        },
+                        required: ["reference", "summary", "historicalContext", "explanation", "application", "reflectionQuestions"]
+                    };
+
+                    const response = await ai.models.generateContent({
+                        model: 'gemini-2.5-flash',
+                        contents: `Atue como um teólogo moderno e inspirador. Explique a passagem bíblica: "${query}".
+                        Traga uma visão clara, motivadora e aplicada aos dias de hoje.
+                        O output DEVE ser um JSON estrito com os campos:
+                        1. reference (Referência correta)
+                        2. summary (Resumo moderno e conciso)
+                        3. historicalContext (Contexto histórico breve)
+                        4. explanation (Explicação teológica profunda)
+                        5. application (Aplicação prática para o dia a dia)
+                        6. reflectionQuestions (Array com duas perguntas para reflexão pessoal)`,
+                        config: {
+                            responseMimeType: "application/json",
+                            responseSchema: schema
                         }
+                    });
+
+                    const text = response.text;
+                    const jsonResult = JSON.parse(text);
+                    
+                    setResult(jsonResult);
+                    if (!isPremium) setUsageCount(prev => prev + 1);
+
+                } catch (error) {
+                    console.error("Erro na API:", error);
+                    
+                    // Detect 403 PERMISSION_DENIED or Leaked Key error specifically
+                    const errorMessage = error.message || error.toString();
+                    if (errorMessage.includes("403") || errorMessage.includes("leaked") || errorMessage.includes("API key")) {
+                         setShowKeyModal(true);
                     } else {
-                        alert("Passagem não encontrada. Tente verificar a escrita.");
+                        alert("Erro de conexão. Verifique sua internet ou tente novamente mais tarde.");
                     }
+                } finally {
                     setIsLoading(false);
                     setStatusText('');
-                }, 800);
+                }
             };
 
             const share = (platform) => {
@@ -631,75 +643,69 @@
             return (
                 <div className="min-h-screen flex flex-col items-center p-4 md:p-8 max-w-4xl mx-auto relative">
                     
+                    {/* API KEY RECOVERY MODAL */}
+                    {showKeyModal && (
+                        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/95 backdrop-blur-lg animate-fade-in-up">
+                            <div className="bg-slate-900/90 p-8 rounded-3xl border border-red-500/50 max-w-md w-full text-center shadow-2xl relative overflow-hidden">
+                                <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-red-600 to-orange-600"></div>
+                                <div className="bg-red-500/20 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
+                                    <IconAlert className="w-10 h-10 text-red-500" />
+                                </div>
+                                <h3 className="text-2xl font-bold text-white mb-3">Atenção Necessária</h3>
+                                <p className="text-slate-300 text-sm mb-6 leading-relaxed">
+                                    A chave de API padrão foi temporariamente bloqueada pelo Google por questões de segurança (limite excedido).
+                                    <br/><br/>
+                                    Para continuar usando agora, <strong>insira sua própria chave da Gemini API</strong> abaixo:
+                                </p>
+                                <input 
+                                    type="text" 
+                                    value={customKeyInput}
+                                    onChange={(e) => setCustomKeyInput(e.target.value)}
+                                    placeholder="Cole sua API Key aqui (AIzaSy...)" 
+                                    className="w-full bg-black/60 border border-slate-700 rounded-xl px-4 py-4 text-white mb-4 focus:border-brand-purple outline-none font-mono text-sm shadow-inner"
+                                />
+                                <div className="flex gap-3">
+                                    <button onClick={() => setShowKeyModal(false)} className="flex-1 py-3 rounded-xl bg-slate-800 text-slate-400 font-semibold hover:bg-slate-700 transition">Cancelar</button>
+                                    <button onClick={handleSaveNewKey} className="flex-1 py-3 rounded-xl bg-brand-purple text-white font-bold hover:bg-violet-600 transition shadow-lg">Salvar & Tentar</button>
+                                </div>
+                                <div className="mt-4">
+                                    <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-xs text-brand-blue hover:underline">Obter uma chave gratuita aqui</a>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* PAYWALL MODAL */}
-                    {showPaywall && (
+                    {showPaywall && !showKeyModal && (
                         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in-up">
                             <div className="premium-glass max-w-md w-full rounded-3xl p-8 relative overflow-hidden border-2 border-brand-gold/50">
-                                
-                                {/* Gold Glow Effect */}
                                 <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] bg-brand-gold/10 rounded-full blur-[80px] pointer-events-none animate-pulse-slow"></div>
-                                
                                 <div className="relative z-10 text-center">
                                     <div className="mx-auto w-16 h-16 bg-gradient-to-br from-yellow-400 to-amber-600 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-brand-gold/30 animate-[float_3s_ease-in-out_infinite]">
                                         <IconStar className="text-white w-8 h-8" />
                                     </div>
-                                    
                                     <h2 className="text-3xl font-serif font-bold text-white mb-2">Plano Premium</h2>
                                     <p className="text-amber-200 text-sm font-medium uppercase tracking-widest mb-6">Acesso Ilimitado</p>
-                                    
-                                    {/* Condition: If payment is pending, show timer. If not, show pitch */}
                                     {paymentPendingTime ? (
                                         <div className="animate-fade-in-up">
                                             <div className="bg-brand-gold/10 rounded-xl p-6 mb-6 border border-brand-gold/30">
                                                 <h3 className="text-white font-bold text-lg mb-2">Validando Pagamento...</h3>
-                                                <p className="text-slate-300 text-sm mb-4">
-                                                    Por favor, aguarde enquanto confirmamos sua transação. O acesso será liberado automaticamente.
-                                                </p>
-                                                <div className="text-4xl font-mono font-bold text-brand-gold tracking-widest mb-2">
-                                                    {formatTime(timeLeft)}
-                                                </div>
-                                                <div className="flex justify-center mt-2">
-                                                    <div className="loader-spin"></div>
-                                                </div>
+                                                <p className="text-slate-300 text-sm mb-4">Por favor, aguarde enquanto confirmamos sua transação. O acesso será liberado automaticamente.</p>
+                                                <div className="text-4xl font-mono font-bold text-brand-gold tracking-widest mb-2">{formatTime(timeLeft)}</div>
+                                                <div className="flex justify-center mt-2"><div className="loader-spin"></div></div>
                                             </div>
-                                            <button onClick={() => setShowPaywall(false)} className="text-sm text-gray-500 hover:text-white">
-                                                Minimizar janela
-                                            </button>
+                                            <button onClick={() => setShowPaywall(false)} className="text-sm text-gray-500 hover:text-white">Minimizar janela</button>
                                         </div>
                                     ) : (
                                         <div className="animate-fade-in-up">
                                             <div className="bg-black/40 rounded-xl p-4 mb-6 border border-white/10 text-left space-y-3">
-                                                <div className="flex items-center gap-3 text-gray-300">
-                                                    <IconCheck className="text-brand-gold" /> <span>Explicações Ilimitadas</span>
-                                                </div>
-                                                <div className="flex items-center gap-3 text-gray-300">
-                                                    <IconCheck className="text-brand-gold" /> <span>Sem Anúncios</span>
-                                                </div>
-                                                <div className="flex items-center gap-3 text-gray-300">
-                                                    <IconCheck className="text-brand-gold" /> <span>Acesso Offline</span>
-                                                </div>
+                                                <div className="flex items-center gap-3 text-gray-300"><IconCheck className="text-brand-gold" /> <span>Explicações Ilimitadas</span></div>
+                                                <div className="flex items-center gap-3 text-gray-300"><IconCheck className="text-brand-gold" /> <span>Sem Anúncios</span></div>
+                                                <div className="flex items-center gap-3 text-gray-300"><IconCheck className="text-brand-gold" /> <span>Acesso Offline</span></div>
                                             </div>
-
-                                            <div className="mb-8">
-                                                <span className="text-5xl font-bold text-white">R$ 9,90</span>
-                                                <span className="text-gray-400 text-sm block mt-1">Pagamento único</span>
-                                            </div>
-
-                                            <a 
-                                                href="https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=8857fb1eaa0d4c72850b91fc40d2e874" 
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="w-full py-4 rounded-xl font-bold text-lg btn-premium flex items-center justify-center gap-2 shadow-2xl mb-3"
-                                            >
-                                                Pagar com Pix/Cartão <IconStar className="w-5 h-5" />
-                                            </a>
-
-                                            <button 
-                                                onClick={handleConfirmPaymentClick}
-                                                className="text-xs text-gray-400 hover:text-white underline transition-colors mt-2"
-                                            >
-                                                Já realizei o pagamento
-                                            </button>
+                                            <div className="mb-8"><span className="text-5xl font-bold text-white">R$ 9,90</span><span className="text-gray-400 text-sm block mt-1">Pagamento único</span></div>
+                                            <a href="https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=8857fb1eaa0d4c72850b91fc40d2e874" target="_blank" rel="noopener noreferrer" className="w-full py-4 rounded-xl font-bold text-lg btn-premium flex items-center justify-center gap-2 shadow-2xl mb-3">Pagar com Pix/Cartão <IconStar className="w-5 h-5" /></a>
+                                            <button onClick={handleConfirmPaymentClick} className="text-xs text-gray-400 hover:text-white underline transition-colors mt-2">Já realizei o pagamento</button>
                                         </div>
                                     )}
                                 </div>
@@ -708,16 +714,11 @@
                     )}
 
                     {/* Toast */}
-                    {toast && !showPaywall && (
+                    {toast && !showPaywall && !showKeyModal && (
                         <div className="fixed top-4 right-4 z-40 animate-fade-in-up">
                             <div className="flex items-center gap-3 glass-panel px-4 py-3 rounded-xl">
-                                <div className="bg-brand-green/20 p-1.5 rounded-full">
-                                    <IconBook className="w-4 h-4 text-brand-green" />
-                                </div>
-                                <div className="flex flex-col">
-                                    <span className="text-white text-xs font-bold">{toast.name}</span>
-                                    <span className="text-slate-300 text-[10px]">{toast.action}</span>
-                                </div>
+                                <div className="bg-brand-green/20 p-1.5 rounded-full"><IconBook className="w-4 h-4 text-brand-green" /></div>
+                                <div className="flex flex-col"><span className="text-white text-xs font-bold">{toast.name}</span><span className="text-slate-300 text-[10px]">{toast.action}</span></div>
                             </div>
                         </div>
                     )}
@@ -725,96 +726,46 @@
                     {/* Header */}
                     <header className="text-center mb-10 mt-6 animate-[float_6s_ease-in-out_infinite]">
                         <div className="relative inline-block">
-                            <div className="w-16 h-16 bg-gradient-to-br from-brand-purple to-brand-blue rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-brand-purple/20 rotate-3 hover:rotate-6 transition-transform">
-                                <IconBook className="text-white w-8 h-8" />
-                            </div>
-                            {isPremium && (
-                                <div className="absolute -top-2 -right-2 bg-brand-gold text-black text-[10px] font-bold px-2 py-1 rounded-full shadow-lg animate-pulse">
-                                    PREMIUM
-                                </div>
-                            )}
+                            <div className="w-16 h-16 bg-gradient-to-br from-brand-purple to-brand-blue rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-brand-purple/20 rotate-3 hover:rotate-6 transition-transform"><IconBook className="text-white w-8 h-8" /></div>
+                            {isPremium && <div className="absolute -top-2 -right-2 bg-brand-gold text-black text-[10px] font-bold px-2 py-1 rounded-full shadow-lg animate-pulse">PREMIUM</div>}
                         </div>
-                        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-2 font-serif">
-                            Explicando a <span className="gradient-text">Bíblia</span>
-                        </h1>
+                        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-2 font-serif">Explicando a <span className="gradient-text">Bíblia</span></h1>
                         <p className="text-slate-400 font-light text-lg">Sabedoria milenar offline e gratuita</p>
-                        
-                        {!isPremium && !paymentPendingTime && (
-                            <div className="mt-2 text-xs font-mono text-slate-500">
-                                Restam: <span className="text-brand-gold font-bold">{Math.max(0, FREE_LIMIT - usageCount)}</span> consultas gratuitas
-                            </div>
-                        )}
-                        {!isPremium && paymentPendingTime && (
-                            <div className="mt-2 text-xs font-mono text-brand-gold animate-pulse">
-                                Validando Pagamento: {formatTime(timeLeft)}
-                            </div>
-                        )}
+                        {!isPremium && !paymentPendingTime && <div className="mt-2 text-xs font-mono text-slate-500">Restam: <span className="text-brand-gold font-bold">{Math.max(0, FREE_LIMIT - usageCount)}</span> consultas gratuitas</div>}
+                        {!isPremium && paymentPendingTime && <div className="mt-2 text-xs font-mono text-brand-gold animate-pulse">Validando Pagamento: {formatTime(timeLeft)}</div>}
                     </header>
 
                     {/* Controls */}
                     <div className="glass-panel p-2 rounded-2xl flex gap-2 mb-8 w-full max-w-md">
-                        <button 
-                            onClick={() => { setMode('text'); stopCamera(); }}
-                            className={`flex-1 py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition-all ${mode === 'text' ? 'bg-slate-700 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                        >
-                            <IconBook /> <span className="font-medium">Digitar</span>
-                        </button>
-                        <button 
-                            onClick={startCamera}
-                            className={`flex-1 py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition-all ${mode === 'camera' ? 'bg-slate-700 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                        >
-                            <IconCamera /> <span className="font-medium">Câmera</span>
-                        </button>
+                        <button onClick={() => { setMode('text'); stopCamera(); }} className={`flex-1 py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition-all ${mode === 'text' ? 'bg-slate-700 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}><IconBook /> <span className="font-medium">Digitar</span></button>
+                        <button onClick={startCamera} className={`flex-1 py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition-all ${mode === 'camera' ? 'bg-slate-700 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}><IconCamera /> <span className="font-medium">Câmera</span></button>
                     </div>
 
                     {/* Main Content */}
                     <main className="w-full max-w-2xl relative">
-                        
                         {isLoading && (
                             <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm rounded-3xl animate-[fade-in_0.3s]">
                                 <div className="w-16 h-16 border-4 border-brand-purple border-t-transparent rounded-full animate-spin mb-4"></div>
                                 <p className="text-brand-purple font-semibold animate-pulse">{statusText}</p>
                             </div>
                         )}
-
                         {mode === 'text' && (
                             <div className="flex flex-col gap-4 animate-fade-in-up">
                                 <div className="relative group">
-                                    <input 
-                                        type="text" 
-                                        value={inputText}
-                                        onChange={(e) => setInputText(e.target.value)}
-                                        onKeyDown={(e) => e.key === 'Enter' && generateExplanation(inputText)}
-                                        placeholder="Ex: Gênesis 7:2, Salmos 23..."
-                                        className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-6 py-5 pl-14 text-lg text-white placeholder-slate-500 focus:outline-none focus:border-brand-purple focus:ring-1 focus:ring-brand-purple transition-all shadow-inner"
-                                    />
-                                    <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-brand-purple transition-colors">
-                                        <IconSearch />
-                                    </div>
+                                    <input type="text" value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && generateExplanation(inputText)} placeholder="Ex: Gênesis 7:2, Salmos 23..." className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-6 py-5 pl-14 text-lg text-white placeholder-slate-500 focus:outline-none focus:border-brand-purple focus:ring-1 focus:ring-brand-purple transition-all shadow-inner" />
+                                    <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-brand-purple transition-colors"><IconSearch /></div>
                                 </div>
-                                <Button onClick={() => generateExplanation(inputText)} disabled={!inputText}>
-                                    {!isPremium && usageCount >= FREE_LIMIT ? (
-                                        <><IconLock className="w-4 h-4" /> Desbloquear Premium</>
-                                    ) : (
-                                        "Explicar Passagem"
-                                    )}
-                                </Button>
-
-                                {/* Verified Badge - Centered Below Button */}
+                                <Button onClick={() => generateExplanation(inputText)} disabled={!inputText}>{!isPremium && usageCount >= FREE_LIMIT ? <><IconLock className="w-4 h-4" /> Desbloquear Premium</> : "Explicar Passagem"}</Button>
                                 <div className="flex items-center justify-center gap-2 mt-2">
-                                    <IconShield className="text-brand-green w-4 h-4 drop-shadow-[0_0_8px_rgba(220,38,38,0.8)]" />
-                                    <span className="text-[11px] font-bold uppercase tracking-widest bg-gradient-to-r from-green-400 via-emerald-400 to-green-500 text-transparent bg-clip-text drop-shadow-[0_0_5px_rgba(74,222,128,0.5)] animate-pulse-slow">
-                                        Verificado Livre de Vírus
-                                    </span>
+                                    <IconShield className="text-brand-green w-4 h-4 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+                                    <span className="text-[11px] font-bold uppercase tracking-widest bg-gradient-to-r from-green-400 via-emerald-400 to-green-500 text-transparent bg-clip-text drop-shadow-[0_0_5px_rgba(74,222,128,0.5)] animate-pulse-slow">Verificado Livre de Vírus</span>
                                 </div>
                             </div>
                         )}
-
                         {mode === 'camera' && (
                             <div className="relative rounded-3xl overflow-hidden bg-black shadow-2xl border border-slate-800 aspect-[3/4] md:aspect-video animate-fade-in-up">
                                 <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
                                 <canvas ref={canvasRef} className="hidden" />
-                                
                                 <div className="absolute inset-0 border-[30px] border-black/40 pointer-events-none flex items-center justify-center">
                                     <div className="w-64 h-32 border-2 border-white/50 rounded-lg relative">
                                         <div className="absolute -top-1 -left-1 w-4 h-4 border-t-4 border-l-4 border-brand-gold"></div>
@@ -823,70 +774,44 @@
                                         <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-4 border-r-4 border-brand-gold"></div>
                                     </div>
                                 </div>
-
                                 <div className="absolute bottom-6 left-0 right-0 flex justify-center z-20">
-                                    <button 
-                                        onClick={handleCapture}
-                                        className="w-20 h-20 rounded-full bg-white border-4 border-slate-300 flex items-center justify-center shadow-lg hover:scale-110 transition-transform active:scale-95"
-                                        aria-label="Capturar foto"
-                                    >
-                                        <div className="w-16 h-16 rounded-full bg-transparent border-2 border-black"></div>
-                                    </button>
+                                    <button onClick={handleCapture} className="w-20 h-20 rounded-full bg-white border-4 border-slate-300 flex items-center justify-center shadow-lg hover:scale-110 transition-transform active:scale-95" aria-label="Capturar foto"><div className="w-16 h-16 rounded-full bg-transparent border-2 border-black"></div></button>
                                 </div>
                             </div>
                         )}
-
-                        {/* Results */}
                         {result && !isLoading && mode === 'text' && (
                             <div className="mt-12 space-y-6 pb-20">
                                 <div className="text-center mb-8 animate-fade-in-up">
-                                    <div className="inline-block px-4 py-1.5 rounded-full bg-brand-purple/10 border border-brand-purple/20 text-brand-purple text-xs font-bold uppercase tracking-widest mb-3">
-                                        Resultado Local
-                                    </div>
+                                    <div className="inline-block px-4 py-1.5 rounded-full bg-brand-purple/10 border border-brand-purple/20 text-brand-purple text-xs font-bold uppercase tracking-widest mb-3">Resultado</div>
                                     <h2 className="text-3xl md:text-4xl font-bold font-serif text-white">{result.reference}</h2>
                                 </div>
-
-                                <div className="glass-panel rounded-2xl p-8 border-t-4 border-brand-purple shadow-2xl shadow-brand-purple/10 animate-[fadeInUp_0.8s_ease-out_forwards]">
+                                <div className="glass-panel rounded-2xl p-8 border-t-4 border-brand-purple shadow-2xl shadow-brand-purple/10 animate-[fadeInUp_0.8s_ease-in-out_forwards]">
                                     <h3 className="text-2xl font-bold mb-6 text-white font-serif">Explicação</h3>
-                                    <p className="text-lg text-slate-200 leading-relaxed whitespace-pre-wrap">
-                                        {result.explanation}
-                                    </p>
+                                    <p className="text-lg text-slate-200 leading-relaxed whitespace-pre-wrap">{result.explanation}</p>
                                 </div>
-
-                                <Card title="Resumo" content={result.summary} color="border-brand-gold" delay={100} />
-                                <Card title="Aplicação Prática" content={result.application} color="border-brand-green" delay={300} />
-                                <Card title="Para Reflexão" content={result.reflectionQuestions} color="border-purple-400" delay={400} />
-
+                                {result.summary && <Card title="Resumo" content={result.summary} color="border-brand-gold" delay={100} />}
+                                {result.historicalContext && <Card title="Contexto Histórico" content={result.historicalContext} color="border-blue-400" delay={200} />}
+                                {result.application && <Card title="Aplicação Prática" content={result.application} color="border-brand-green" delay={300} />}
+                                {result.reflectionQuestions && <Card title="Para Reflexão" content={result.reflectionQuestions} color="border-purple-400" delay={400} />}
                                 <div className="flex justify-center gap-4 mt-8 pt-8 border-t border-slate-800">
-                                    <button onClick={() => share('whatsapp')} className="p-3 bg-[#25D366]/20 hover:bg-[#25D366]/30 text-[#25D366] rounded-xl transition-colors">
-                                        <IconShare />
-                                    </button>
-                                    <button onClick={() => share('twitter')} className="p-3 bg-[#1DA1F2]/20 hover:bg-[#1DA1F2]/30 text-[#1DA1F2] rounded-xl transition-colors">
-                                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-                                    </button>
-                                    <button onClick={() => share('facebook')} className="p-3 bg-[#1877F2]/20 hover:bg-[#1877F2]/30 text-[#1877F2] rounded-xl transition-colors">
-                                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036c-2.148 0-2.971 1.066-2.971 2.92v1.051h4.153l-.545 3.667h-3.608v7.98h-4.844Z"/></svg>
-                                    </button>
+                                    <button onClick={() => share('whatsapp')} className="p-3 bg-[#25D366]/20 hover:bg-[#25D366]/30 text-[#25D366] rounded-xl transition-colors"><IconShare /></button>
+                                    <button onClick={() => share('twitter')} className="p-3 bg-[#1DA1F2]/20 hover:bg-[#1DA1F2]/30 text-[#1DA1F2] rounded-xl transition-colors"><svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></button>
+                                    <button onClick={() => share('facebook')} className="p-3 bg-[#1877F2]/20 hover:bg-[#1877F2]/30 text-[#1877F2] rounded-xl transition-colors"><svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036c-2.148 0-2.971 1.066-2.971 2.92v1.051h4.153l-.545 3.667h-3.608v7.98h-4.844Z"/></svg></button>
                                 </div>
                             </div>
                         )}
                     </main>
-                    
                     <footer className="mt-12 text-center pb-8 animate-fade-in-up">
                         <div className="flex flex-col items-center justify-center gap-1 mb-2">
                             <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">Assinantes</div>
                             <div className="text-2xl font-mono font-bold text-white tabular-nums">{subscriberCount}</div>
                         </div>
                         <div className="flex items-center justify-center gap-2 text-slate-500 text-sm">
-                            <span className="relative flex h-2 w-2">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-green opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-green"></span>
-                            </span>
+                            <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-green opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-brand-green"></span></span>
                             <span>{onlineCount} pessoas estudando agora</span>
                         </div>
                         <p className="mt-4 text-xs text-slate-600">© 2024 Explicando a Bíblia</p>
                     </footer>
-
                 </div>
             );
         }
