@@ -219,7 +219,8 @@
         const IconLock = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
         const IconStar = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
         const IconShield = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;
-        const IconAlert = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>;
+        const IconSpeaker = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>;
+        const IconStop = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="none" className={className}><rect x="6" y="6" width="12" height="12" rx="2" /></svg>;
 
 
         // --- COMPONENTS ---
@@ -301,6 +302,9 @@
             const [showPaywall, setShowPaywall] = useState(false);
             const [timeLeft, setTimeLeft] = useState(null);
             
+            // TTS State
+            const [isSpeaking, setIsSpeaking] = useState(false);
+
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
 
@@ -308,6 +312,12 @@
                 // Save usage to storage
                 localStorage.setItem('bible_usage_count', usageCount);
             }, [usageCount]);
+
+            useEffect(() => {
+                return () => {
+                    window.speechSynthesis.cancel(); // Cleanup speech on unmount
+                }
+            }, []);
 
             // Timer Logic for Pending Payment
             useEffect(() => {
@@ -517,6 +527,35 @@
                 }
             };
 
+            const handleSpeak = () => {
+                if (!result) return;
+                
+                if (isSpeaking) {
+                    window.speechSynthesis.cancel();
+                    setIsSpeaking(false);
+                    return;
+                }
+
+                if ('speechSynthesis' in window) {
+                    const textToRead = `${result.reference}. ${result.explanation} ${result.summary ? 'Resumo: ' + result.summary : ''}`;
+                    const utterance = new SpeechSynthesisUtterance(textToRead);
+                    utterance.lang = 'pt-BR';
+                    
+                    // Try to find a Portuguese voice
+                    const voices = window.speechSynthesis.getVoices();
+                    const ptVoice = voices.find(v => v.lang.includes('pt') || v.lang.includes('BR'));
+                    if (ptVoice) utterance.voice = ptVoice;
+
+                    utterance.onstart = () => setIsSpeaking(true);
+                    utterance.onend = () => setIsSpeaking(false);
+                    utterance.onerror = () => setIsSpeaking(false);
+
+                    window.speechSynthesis.speak(utterance);
+                } else {
+                    alert("Seu navegador não suporta leitura de texto.");
+                }
+            };
+
             const generateExplanation = async (query) => {
                 if (!query) return;
 
@@ -723,7 +762,21 @@
                             </div>
                         )}
                         {result && !isLoading && mode === 'text' && (
-                            <div className="mt-12 space-y-6 pb-20">
+                            <div className="mt-12 space-y-6 pb-20 relative">
+                                
+                                {/* Floating Speaker Button */}
+                                <button 
+                                    onClick={handleSpeak}
+                                    className={`absolute -top-12 right-2 p-3 rounded-full shadow-lg backdrop-blur-md border transition-all duration-300 z-20 ${
+                                        isSpeaking 
+                                        ? "bg-red-500/20 border-red-500 text-red-400 animate-pulse" 
+                                        : "bg-brand-purple/20 border-brand-purple/50 text-brand-purple hover:bg-brand-purple/30"
+                                    }`}
+                                    title={isSpeaking ? "Parar leitura" : "Ouvir explicação"}
+                                >
+                                    {isSpeaking ? <IconStop className="w-5 h-5" /> : <IconSpeaker className="w-5 h-5" />}
+                                </button>
+
                                 <div className="text-center mb-8 animate-fade-in-up">
                                     <div className="inline-block px-4 py-1.5 rounded-full bg-brand-purple/10 border border-brand-purple/20 text-brand-purple text-xs font-bold uppercase tracking-widest mb-3">Resultado</div>
                                     <h2 className="text-3xl md:text-4xl font-bold font-serif text-white">{result.reference}</h2>
