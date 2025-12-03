@@ -750,7 +750,12 @@
                                 <Button onClick={handleGenerateClick} disabled={!inputText}>
                                     {!isPremium && usageCount >= FREE_LIMIT ? 
                                         <><IconLock className="w-4 h-4" /> Desbloquear Premium</> : 
-                                        (isPremium ? "Explicar Passagem" : "EXPLICAR PASSAGEM (Ver 1 Propaganda)")
+                                        (isPremium ? "Explicar Passagem" : 
+                                            <div className="flex flex-col items-center leading-none py-1">
+                                                <span>EXPLICAR PASSAGEM</span>
+                                                <span className="text-[10px] font-normal opacity-90 mt-1">E ver 1 propaganda</span>
+                                            </div>
+                                        )
                                     }
                                 </Button>
                                 <div className="flex items-center justify-center gap-2 mt-2">
