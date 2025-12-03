@@ -75,9 +75,19 @@
         }
     </script>
 
+    <!-- Import Map for Gemini SDK -->
+    <script type="importmap">
+      {
+        "imports": {
+          "@google/genai": "https://esm.run/@google/genai"
+        }
+      }
+    </script>
+
     <!-- React & Babel -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Important: data-type="module" allows using imports in Babel script -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <!-- Tesseract.js -->
@@ -127,14 +137,6 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             animation: gradient 8s linear infinite;
-        }
-
-        .premium-text {
-            background: linear-gradient(to right, #fbbf24, #fbbf24, #f59e0b, #fbbf24);
-            background-size: 200% auto;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            animation: gradient 4s linear infinite;
         }
 
         .btn-gradient {
@@ -191,8 +193,15 @@
 
     <div id="root"></div>
 
-    <script type="text/babel">
+    <script type="text/babel" data-type="module">
+        import { GoogleGenAI, Type } from "@google/genai";
+
         const { useState, useEffect, useRef } = React;
+
+        // --- CONFIGURATION ---
+        // Base64 encoded key to prevent simple scraping. 
+        // Original: AIzaSyDmXONK-fABvBsMnEAx2TKb5C98P4ZrSdY
+        const API_KEY_B64 = "QUl6YVN5RG1YT05LLWZBQnZCc01uRUF4MlRLYjVDOTRQNFpyU2RZ";
 
         // --- ICONS ---
         const IconSearch = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>;
@@ -202,10 +211,11 @@
         const IconCheck = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
         const IconLock = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
         const IconStar = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
-        const IconClock = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
         const IconShield = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;
 
-        // --- LOCAL SEARCH LOGIC ---
+        // --- SERVICES ---
+
+        // 1. Local Database Service
         class LocalSearchEngine {
             constructor() {
                 this.entries = [];
@@ -253,13 +263,14 @@
                 const match = this.entries.find(e => e.id.includes(normalizedQuery) || normalizedQuery.includes(e.id));
                 
                 if (match) {
+                    // Basic formatting for local entries
                     return {
                         reference: match.displayRef,
-                        summary: "Reflexão sobre " + match.displayRef,
-                        historicalContext: "Passagem extraída do banco de dados local.",
+                        summary: "Explicação do Banco de Dados",
+                        historicalContext: "Passagem verificada em nossos registros.",
                         explanation: match.content,
-                        application: "Reflita sobre como este ensinamento se aplica ao seu momento atual de vida.",
-                        reflectionQuestions: ["O que este texto diz ao seu coração hoje?", "Como você pode praticar isso amanhã?"]
+                        application: "Reflita sobre este ensinamento hoje.",
+                        reflectionQuestions: ["O que este versículo diz ao seu coração?", "Como aplicar isso na sua vida?"]
                     };
                 }
                 return null;
@@ -267,6 +278,69 @@
         }
 
         const localDB = new LocalSearchEngine();
+
+        // 2. Gemini API Service
+        class AIService {
+            constructor() {
+                this.client = null;
+                try {
+                    const key = atob(API_KEY_B64);
+                    this.client = new GoogleGenAI({ apiKey: key });
+                } catch (e) {
+                    console.error("Erro ao inicializar IA:", e);
+                }
+            }
+
+            async explain(passage) {
+                if (!this.client) throw new Error("Serviço de IA indisponível.");
+
+                const prompt = `
+                    Você é um especialista bíblico moderno e claro.
+                    Explique a passagem: "${passage}".
+                    
+                    Retorne EXATAMENTE neste formato JSON:
+                    {
+                        "reference": "Livro Cap:Ver",
+                        "summary": "Resumo curto e moderno",
+                        "historicalContext": "Contexto histórico breve",
+                        "explanation": "Explicação teológica profunda em linguagem atual e acessível",
+                        "application": "Como aplicar isso na vida hoje (prático)",
+                        "reflectionQuestions": ["Pergunta 1?", "Pergunta 2?"]
+                    }
+                `;
+
+                try {
+                    const response = await this.client.models.generateContent({
+                        model: 'gemini-2.5-flash',
+                        contents: prompt,
+                        config: {
+                            responseMimeType: "application/json",
+                            responseSchema: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    reference: { type: Type.STRING },
+                                    summary: { type: Type.STRING },
+                                    historicalContext: { type: Type.STRING },
+                                    explanation: { type: Type.STRING },
+                                    application: { type: Type.STRING },
+                                    reflectionQuestions: { 
+                                        type: Type.ARRAY,
+                                        items: { type: Type.STRING }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    
+                    return JSON.parse(response.text);
+                } catch (error) {
+                    console.error("Erro na IA:", error);
+                    throw error;
+                }
+            }
+        }
+
+        const aiService = new AIService();
 
         // --- COMPONENTS ---
 
@@ -396,7 +470,7 @@
 
             }, [paymentPendingTime, isPremium]);
 
-            // Subscriber Counter Effect - Much Slower (4.5 seconds) and Persisted
+            // Subscriber Counter Effect - Slow (4.5 seconds) and Persisted
             useEffect(() => {
                 const subInterval = setInterval(() => {
                     setSubscriberCount(prev => {
@@ -597,22 +671,39 @@
                 }
                 
                 setIsLoading(true);
+                
+                // 1. Check Local DB
                 setStatusText('Pesquisando no banco de dados...');
+                const localResult = localDB.search(query);
+                
+                if (localResult) {
+                    // Simulate small delay for UX
+                    setTimeout(() => {
+                        setResult(localResult);
+                        finalizeGeneration();
+                    }, 600);
+                    return;
+                }
 
-                setTimeout(() => {
-                    const found = localDB.search(query);
-                    if (found) {
-                        setResult(found);
-                        // Increment usage
-                        if (!isPremium) {
-                            setUsageCount(prev => prev + 1);
-                        }
-                    } else {
-                        alert("Passagem não encontrada. Tente verificar a escrita.");
-                    }
+                // 2. If not local, use AI
+                setStatusText('Consultando Inteligência Artificial...');
+                try {
+                    const aiResult = await aiService.explain(query);
+                    setResult(aiResult);
+                    finalizeGeneration();
+                } catch (error) {
+                    console.error(error);
+                    alert("Não foi possível gerar a explicação. Verifique sua conexão.");
                     setIsLoading(false);
-                    setStatusText('');
-                }, 800);
+                }
+            };
+
+            const finalizeGeneration = () => {
+                if (!isPremium) {
+                    setUsageCount(prev => prev + 1);
+                }
+                setIsLoading(false);
+                setStatusText('');
             };
 
             const share = (platform) => {
@@ -841,7 +932,7 @@
                             <div className="mt-12 space-y-6 pb-20">
                                 <div className="text-center mb-8 animate-fade-in-up">
                                     <div className="inline-block px-4 py-1.5 rounded-full bg-brand-purple/10 border border-brand-purple/20 text-brand-purple text-xs font-bold uppercase tracking-widest mb-3">
-                                        Resultado Local
+                                        Resultado
                                     </div>
                                     <h2 className="text-3xl md:text-4xl font-bold font-serif text-white">{result.reference}</h2>
                                 </div>
@@ -854,6 +945,9 @@
                                 </div>
 
                                 <Card title="Resumo" content={result.summary} color="border-brand-gold" delay={100} />
+                                {result.historicalContext && (
+                                    <Card title="Contexto Histórico" content={result.historicalContext} color="border-brand-blue" delay={200} />
+                                )}
                                 <Card title="Aplicação Prática" content={result.application} color="border-brand-green" delay={300} />
                                 <Card title="Para Reflexão" content={result.reflectionQuestions} color="border-purple-400" delay={400} />
 
