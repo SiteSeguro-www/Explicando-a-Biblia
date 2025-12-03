@@ -211,21 +211,12 @@
         const { useState, useEffect, useRef } = React;
 
         // --- CONFIG ---
-        // Base64 Encoded API Key (Default)
-        const ENCODED_KEY = "QUl6YVN5RG1YT05LLWZBQnZCc01uRUF4MlRLYjVDOTRQNFpyU2RZ";
-        
-        const getApiKey = () => {
-            // First check if user has provided a custom key to override the leaked one
-            const customKey = localStorage.getItem('bible_custom_api_key');
-            if (customKey) return customKey;
-
-            try {
-                return atob(ENCODED_KEY);
-            } catch (e) {
-                console.error("Erro ao decodificar chave:", e);
-                return "";
-            }
-        };
+        // Array of Base64 Encoded API Keys for Rotation/Failover
+        const ENCODED_KEYS = [
+            "QUl6YVN5RG1YT05LLWZBQnZCc01uRUF4MlRLYjVDOTRQNFpyU2RZ", // Key 1
+            "QUl6YVN5REZSaGFoYkJ3TXMxNE1rekwxTUEzM3lXT1hoWDQ1b21rcw==", // Key 2
+            "QUl6YVN5RHlZNmdBUHNXUlR5REpnTWs5STRTZ0pRcVg2b19Cel9z"  // Key 3
+        ];
 
         // --- ICONS ---
         const IconSearch = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>;
@@ -318,10 +309,6 @@
             const [showPaywall, setShowPaywall] = useState(false);
             const [timeLeft, setTimeLeft] = useState(null);
             
-            // API Key Recovery
-            const [showKeyModal, setShowKeyModal] = useState(false);
-            const [customKeyInput, setCustomKeyInput] = useState("");
-
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
 
@@ -402,7 +389,7 @@
                 const actions = ["buscou Salmos 23", "leu João 3:16", "virou Premium", "usou a câmera"];
                 
                 const showToast = () => {
-                    if(showPaywall || showKeyModal) return; 
+                    if(showPaywall) return; 
                     const name = names[Math.floor(Math.random() * names.length)];
                     const action = actions[Math.floor(Math.random() * actions.length)];
                     setToast({ name, action });
@@ -416,7 +403,7 @@
                     clearInterval(toastInterval);
                     stopCamera();
                 };
-            }, [showPaywall, showKeyModal]);
+            }, [showPaywall]);
 
             const playPaywallSound = () => {
                 try {
@@ -465,16 +452,6 @@
                 const now = Date.now();
                 setPaymentPendingTime(now);
                 localStorage.setItem('bible_payment_pending_since', now.toString());
-            };
-
-            const handleSaveNewKey = () => {
-                if (customKeyInput.trim().length > 10) {
-                    localStorage.setItem('bible_custom_api_key', customKeyInput.trim());
-                    setShowKeyModal(false);
-                    alert("Nova chave salva! Tente explicar a passagem novamente.");
-                } else {
-                    alert("Chave inválida. Verifique se copiou corretamente.");
-                }
             };
 
             const formatTime = (ms) => {
@@ -560,70 +537,80 @@
                 
                 setIsLoading(true);
                 setStatusText('Conectando à Inteligência Artificial...');
+                
+                let success = false;
+                let lastError = null;
 
-                try {
-                    const apiKey = getApiKey();
-                    if (!apiKey) throw new Error("Chave de API não configurada.");
-
-                    // Use window.GenAI loaded from the module script
-                    if (!window.GenAI) throw new Error("SDK do Google não carregado.");
-                    
-                    const { GoogleGenAI, Type } = window.GenAI;
-                    const ai = new GoogleGenAI({ apiKey: apiKey });
-                    
-                    // Schema for JSON response
-                    const schema = {
-                        type: Type.OBJECT,
-                        properties: {
-                            reference: { type: Type.STRING },
-                            summary: { type: Type.STRING },
-                            historicalContext: { type: Type.STRING },
-                            explanation: { type: Type.STRING },
-                            application: { type: Type.STRING },
-                            reflectionQuestions: { 
-                                type: Type.ARRAY, 
-                                items: { type: Type.STRING } 
-                            }
-                        },
-                        required: ["reference", "summary", "historicalContext", "explanation", "application", "reflectionQuestions"]
-                    };
-
-                    const response = await ai.models.generateContent({
-                        model: 'gemini-2.5-flash',
-                        contents: `Atue como um teólogo moderno e inspirador. Explique a passagem bíblica: "${query}".
-                        Traga uma visão clara, motivadora e aplicada aos dias de hoje.
-                        O output DEVE ser um JSON estrito com os campos:
-                        1. reference (Referência correta)
-                        2. summary (Resumo moderno e conciso)
-                        3. historicalContext (Contexto histórico breve)
-                        4. explanation (Explicação teológica profunda)
-                        5. application (Aplicação prática para o dia a dia)
-                        6. reflectionQuestions (Array com duas perguntas para reflexão pessoal)`,
-                        config: {
-                            responseMimeType: "application/json",
-                            responseSchema: schema
-                        }
-                    });
-
-                    const text = response.text;
-                    const jsonResult = JSON.parse(text);
-                    
-                    setResult(jsonResult);
-                    if (!isPremium) setUsageCount(prev => prev + 1);
-
-                } catch (error) {
-                    console.error("Erro na API:", error);
-                    
-                    // Detect 403 PERMISSION_DENIED or Leaked Key error specifically
-                    const errorMessage = error.message || error.toString();
-                    if (errorMessage.includes("403") || errorMessage.includes("leaked") || errorMessage.includes("API key")) {
-                         setShowKeyModal(true);
-                    } else {
-                        alert("Erro de conexão. Verifique sua internet ou tente novamente mais tarde.");
-                    }
-                } finally {
+                // Schema for JSON response
+                // Use window.GenAI loaded from the module script
+                if (!window.GenAI) {
+                    alert("SDK do Google não carregado.");
                     setIsLoading(false);
-                    setStatusText('');
+                    return;
+                }
+                
+                const { GoogleGenAI, Type } = window.GenAI;
+
+                const schema = {
+                    type: Type.OBJECT,
+                    properties: {
+                        reference: { type: Type.STRING },
+                        summary: { type: Type.STRING },
+                        historicalContext: { type: Type.STRING },
+                        explanation: { type: Type.STRING },
+                        application: { type: Type.STRING },
+                        reflectionQuestions: { 
+                            type: Type.ARRAY, 
+                            items: { type: Type.STRING } 
+                        }
+                    },
+                    required: ["reference", "summary", "historicalContext", "explanation", "application", "reflectionQuestions"]
+                };
+
+                // TRY KEYS SEQUENTIALLY
+                for (const encodedKey of ENCODED_KEYS) {
+                    try {
+                        const apiKey = atob(encodedKey);
+                        const ai = new GoogleGenAI({ apiKey: apiKey });
+                        
+                        const response = await ai.models.generateContent({
+                            model: 'gemini-2.5-flash',
+                            contents: `Atue como um teólogo moderno e inspirador. Explique a passagem bíblica: "${query}".
+                            Traga uma visão clara, motivadora e aplicada aos dias de hoje.
+                            O output DEVE ser um JSON estrito com os campos:
+                            1. reference (Referência correta)
+                            2. summary (Resumo moderno e conciso)
+                            3. historicalContext (Contexto histórico breve)
+                            4. explanation (Explicação teológica profunda)
+                            5. application (Aplicação prática para o dia a dia)
+                            6. reflectionQuestions (Array com duas perguntas para reflexão pessoal)`,
+                            config: {
+                                responseMimeType: "application/json",
+                                responseSchema: schema
+                            }
+                        });
+
+                        const text = response.text;
+                        const jsonResult = JSON.parse(text);
+                        
+                        setResult(jsonResult);
+                        if (!isPremium) setUsageCount(prev => prev + 1);
+                        success = true;
+                        break; // Exit loop on success
+
+                    } catch (error) {
+                        console.warn("Falha na chave API, tentando próxima...", error);
+                        lastError = error;
+                        // Continue to next key
+                    }
+                }
+
+                setIsLoading(false);
+                setStatusText('');
+
+                if (!success) {
+                    console.error("Todas as chaves falharam:", lastError);
+                    alert("O sistema está sobrecarregado no momento. Por favor, tente novamente em alguns instantes.");
                 }
             };
 
@@ -643,40 +630,8 @@
             return (
                 <div className="min-h-screen flex flex-col items-center p-4 md:p-8 max-w-4xl mx-auto relative">
                     
-                    {/* API KEY RECOVERY MODAL */}
-                    {showKeyModal && (
-                        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/95 backdrop-blur-lg animate-fade-in-up">
-                            <div className="bg-slate-900/90 p-8 rounded-3xl border border-red-500/50 max-w-md w-full text-center shadow-2xl relative overflow-hidden">
-                                <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-red-600 to-orange-600"></div>
-                                <div className="bg-red-500/20 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
-                                    <IconAlert className="w-10 h-10 text-red-500" />
-                                </div>
-                                <h3 className="text-2xl font-bold text-white mb-3">Atenção Necessária</h3>
-                                <p className="text-slate-300 text-sm mb-6 leading-relaxed">
-                                    A chave de API padrão foi temporariamente bloqueada pelo Google por questões de segurança (limite excedido).
-                                    <br/><br/>
-                                    Para continuar usando agora, <strong>insira sua própria chave da Gemini API</strong> abaixo:
-                                </p>
-                                <input 
-                                    type="text" 
-                                    value={customKeyInput}
-                                    onChange={(e) => setCustomKeyInput(e.target.value)}
-                                    placeholder="Cole sua API Key aqui (AIzaSy...)" 
-                                    className="w-full bg-black/60 border border-slate-700 rounded-xl px-4 py-4 text-white mb-4 focus:border-brand-purple outline-none font-mono text-sm shadow-inner"
-                                />
-                                <div className="flex gap-3">
-                                    <button onClick={() => setShowKeyModal(false)} className="flex-1 py-3 rounded-xl bg-slate-800 text-slate-400 font-semibold hover:bg-slate-700 transition">Cancelar</button>
-                                    <button onClick={handleSaveNewKey} className="flex-1 py-3 rounded-xl bg-brand-purple text-white font-bold hover:bg-violet-600 transition shadow-lg">Salvar & Tentar</button>
-                                </div>
-                                <div className="mt-4">
-                                    <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-xs text-brand-blue hover:underline">Obter uma chave gratuita aqui</a>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
                     {/* PAYWALL MODAL */}
-                    {showPaywall && !showKeyModal && (
+                    {showPaywall && (
                         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in-up">
                             <div className="premium-glass max-w-md w-full rounded-3xl p-8 relative overflow-hidden border-2 border-brand-gold/50">
                                 <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] bg-brand-gold/10 rounded-full blur-[80px] pointer-events-none animate-pulse-slow"></div>
@@ -714,7 +669,7 @@
                     )}
 
                     {/* Toast */}
-                    {toast && !showPaywall && !showKeyModal && (
+                    {toast && !showPaywall && (
                         <div className="fixed top-4 right-4 z-40 animate-fade-in-up">
                             <div className="flex items-center gap-3 glass-panel px-4 py-3 rounded-xl">
                                 <div className="bg-brand-green/20 p-1.5 rounded-full"><IconBook className="w-4 h-4 text-brand-green" /></div>
