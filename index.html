@@ -827,7 +827,10 @@
                             {isPremium && <div className="absolute -top-2 -right-2 bg-brand-gold text-black text-[10px] font-bold px-2 py-1 rounded-full shadow-lg animate-pulse">PREMIUM</div>}
                         </div>
                         <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-2 font-serif">Explicando a <span className="gradient-text">Bíblia</span></h1>
-                        <p className="text-slate-400 font-light text-lg">Sabedoria milenar offline e gratuita</p>
+                        <div className="text-slate-400 font-light text-base md:text-lg mb-4 space-y-1">
+                            <p className="text-slate-300 italic">"Você já leu um versículo e ficou sem entender?"</p>
+                            <p className="font-medium text-white">Descubra o que a Bíblia realmente quer dizer para a sua vida hoje.</p>
+                        </div>
                         {!isPremium && !paymentPendingTime && (
                             <div className="mt-2 text-sm font-mono text-slate-400">
                                 <div>Restam: <span className="text-brand-gold font-bold text-lg">{Math.max(0, TOTAL_LIMIT - usageData.total)}</span> consultas</div>
