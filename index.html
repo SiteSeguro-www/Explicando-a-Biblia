@@ -55,6 +55,7 @@
                         'fade-in-up': 'fadeInUp 0.5s ease-out forwards',
                         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                         'shine': 'shine 3s infinite',
+                        'cyan-aura': 'cyanAura 2s infinite',
                     },
                     keyframes: {
                         gradient: {
@@ -73,6 +74,11 @@
                             '0%': { left: '-100%' },
                             '20%': { left: '100%' },
                             '100%': { left: '100%' }
+                        },
+                        cyanAura: {
+                            '0%': { boxShadow: '0 0 0 0 rgba(6, 182, 212, 0.7)' },
+                            '70%': { boxShadow: '0 0 0 10px rgba(6, 182, 212, 0)' },
+                            '100%': { boxShadow: '0 0 0 0 rgba(6, 182, 212, 0)' }
                         }
                     }
                 }
@@ -252,7 +258,7 @@
         const Button = ({ onClick, children, variant = 'primary', className = '', disabled = false }) => {
             const baseClass = "px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed";
             const variants = {
-                primary: "btn-gradient btn-shine text-white shadow-lg", 
+                primary: "btn-gradient btn-shine animate-cyan-aura text-white shadow-lg", 
                 premium: "btn-premium text-black font-bold shadow-xl",
                 secondary: "bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700",
                 outline: "border-2 border-slate-700 text-slate-300 hover:border-brand-purple hover:text-brand-purple bg-transparent",
