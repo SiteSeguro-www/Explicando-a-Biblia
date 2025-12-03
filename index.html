@@ -221,6 +221,7 @@
         const IconShield = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;
         const IconSpeaker = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>;
         const IconStop = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="none" className={className}><rect x="6" y="6" width="12" height="12" rx="2" /></svg>;
+        const IconHeart = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}><path d="m11.645 20.91-.007-.003-.022-.012a15.247 15.247 0 0 1-.383-.218 25.18 25.18 0 0 1-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3.25 7.5 3.25c1.279 0 2.405.502 3.169 1.329C11.43 3.753 12.556 3.25 13.835 3.25c2.786 0 5.25 2.072 5.25 5.005 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 0 1-4.244 3.17 15.247 15.247 0 0 1-.383.219l-.022.012-.007.004-.003.001a.752.752 0 0 1-.704 0l-.003-.001Z" /></svg>;
 
 
         // --- COMPONENTS ---
@@ -289,10 +290,32 @@
             const [toast, setToast] = useState(null);
             
             // Premium Logic
-            const FREE_LIMIT = 5;
+            const TOTAL_LIMIT = 200;
+            const DAILY_LIMIT = 5;
             const PENDING_TIME_MS = 20 * 60 * 1000; // 20 minutes in ms
 
-            const [usageCount, setUsageCount] = useState(() => parseInt(localStorage.getItem('bible_usage_count') || '0'));
+            // Usage Data State (JSON object)
+            const [usageData, setUsageData] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('bible_usage_data');
+                    const parsed = saved ? JSON.parse(saved) : null;
+                    const today = new Date().toLocaleDateString();
+
+                    if (parsed && parsed.date === today) {
+                        return parsed;
+                    } else {
+                        // Reset daily usage if date changed or no data
+                        return {
+                            date: today,
+                            daily: 0,
+                            total: parsed ? (parsed.total || 0) : 0
+                        };
+                    }
+                } catch (e) {
+                    return { date: new Date().toLocaleDateString(), daily: 0, total: 0 };
+                }
+            });
+
             const [isPremium, setIsPremium] = useState(() => localStorage.getItem('bible_is_premium') === 'true');
             const [paymentPendingTime, setPaymentPendingTime] = useState(() => {
                 const saved = localStorage.getItem('bible_payment_pending_since');
@@ -309,9 +332,9 @@
             const canvasRef = useRef(null);
 
             useEffect(() => {
-                // Save usage to storage
-                localStorage.setItem('bible_usage_count', usageCount);
-            }, [usageCount]);
+                // Save usage to storage whenever it changes
+                localStorage.setItem('bible_usage_data', JSON.stringify(usageData));
+            }, [usageData]);
 
             useEffect(() => {
                 return () => {
@@ -472,10 +495,12 @@
             };
 
             const startCamera = async () => {
-                if (!isPremium && usageCount >= FREE_LIMIT) {
-                    playPaywallSound();
-                    setShowPaywall(true);
-                    return;
+                if (!isPremium) {
+                    if (usageData.daily >= DAILY_LIMIT || usageData.total >= TOTAL_LIMIT) {
+                        playPaywallSound();
+                        setShowPaywall(true);
+                        return;
+                    }
                 }
 
                 setResult(null);
@@ -569,11 +594,13 @@
             const generateExplanation = async (query) => {
                 if (!query) return;
 
-                // PAYWALL CHECK
-                if (!isPremium && usageCount >= FREE_LIMIT) {
-                    playPaywallSound();
-                    setShowPaywall(true);
-                    return;
+                // PAYWALL CHECK (Daily OR Total)
+                if (!isPremium) {
+                    if (usageData.daily >= DAILY_LIMIT || usageData.total >= TOTAL_LIMIT) {
+                        playPaywallSound();
+                        setShowPaywall(true);
+                        return;
+                    }
                 }
                 
                 setIsLoading(true);
@@ -597,7 +624,7 @@
                                 'Content-Type': 'application/json'
                             },
                             body: JSON.stringify({
-                                model: "llama-3.3-70b-versatile", // Updated model for better stability
+                                model: "llama-3.3-70b-versatile", 
                                 messages: [
                                     {
                                         role: "system",
@@ -631,7 +658,16 @@
 
                         
                         setResult(jsonResult);
-                        if (!isPremium) setUsageCount(prev => prev + 1);
+                        
+                        // Increment Usage
+                        if (!isPremium) {
+                            setUsageData(prev => ({
+                                ...prev,
+                                daily: prev.daily + 1,
+                                total: prev.total + 1
+                            }));
+                        }
+                        
                         success = true;
                         break; // Exit loop on success
 
@@ -723,7 +759,7 @@
                         </div>
                         <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-2 font-serif">Explicando a <span className="gradient-text">Bíblia</span></h1>
                         <p className="text-slate-400 font-light text-lg">Sabedoria milenar offline e gratuita</p>
-                        {!isPremium && !paymentPendingTime && <div className="mt-2 text-xs font-mono text-slate-500">Restam: <span className="text-brand-gold font-bold">{Math.max(0, FREE_LIMIT - usageCount)}</span> consultas gratuitas</div>}
+                        {!isPremium && !paymentPendingTime && <div className="mt-2 text-xs font-mono text-slate-500">Restam: <span className="text-brand-gold font-bold">{Math.max(0, DAILY_LIMIT - usageData.daily)}</span> consultas hoje</div>}
                         {!isPremium && paymentPendingTime && <div className="mt-2 text-xs font-mono text-brand-gold animate-pulse">Validando Pagamento: {formatTime(timeLeft)}</div>}
                     </header>
 
@@ -747,13 +783,17 @@
                                     <input type="text" value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleGenerateClick()} placeholder="Ex: Gênesis 7:2, Salmos 23..." className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-6 py-5 pl-14 text-lg text-white placeholder-slate-500 focus:outline-none focus:border-brand-purple focus:ring-1 focus:ring-brand-purple transition-all shadow-inner" />
                                     <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-brand-purple transition-colors"><IconSearch /></div>
                                 </div>
-                                <Button onClick={handleGenerateClick} disabled={!inputText}>
-                                    {!isPremium && usageCount >= FREE_LIMIT ? 
+                                <Button 
+                                    onClick={handleGenerateClick} 
+                                    disabled={!inputText}
+                                    className="border border-yellow-200/30 shadow-[0_0_15px_rgba(251,191,36,0.5)] hover:shadow-[0_0_25px_rgba(251,191,36,0.7)]"
+                                >
+                                    {!isPremium && (usageData.daily >= DAILY_LIMIT || usageData.total >= TOTAL_LIMIT) ? 
                                         <><IconLock className="w-4 h-4" /> Desbloquear Premium</> : 
                                         (isPremium ? "Explicar Passagem" : 
                                             <div className="flex flex-col items-center leading-none py-1">
                                                 <span>EXPLICAR PASSAGEM</span>
-                                                <span className="text-[10px] font-normal opacity-90 mt-1">E ver 1 propaganda</span>
+                                                <span className="text-[10px] font-normal opacity-90 mt-1">ver 1 propaganda</span>
                                             </div>
                                         )
                                     }
@@ -822,11 +862,18 @@
                             <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">Assinantes</div>
                             <div className="text-2xl font-mono font-bold text-white tabular-nums">{subscriberCount}</div>
                         </div>
-                        <div className="flex items-center justify-center gap-2 text-slate-500 text-sm">
+                        <div className="flex items-center justify-center gap-2 text-slate-500 text-sm mb-6">
                             <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-green opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-brand-green"></span></span>
                             <span>{onlineCount} pessoas estudando agora</span>
                         </div>
-                        <p className="mt-4 text-xs text-slate-600">© 2024 Explicando a Bíblia</p>
+                        <div className="mt-6 flex flex-col gap-2">
+                            <p className="text-xs text-slate-600 flex items-center justify-center gap-1">
+                                2026 Feito com <IconHeart className="w-3 h-3 text-red-500 fill-current" /> Por David
+                            </p>
+                            <a href="mailto:dw89x@hotmail.com" className="text-xs text-slate-500 hover:text-brand-gold transition-colors underline">
+                                Suporte e Dúvidas
+                            </a>
+                        </div>
                     </footer>
                 </div>
             );
