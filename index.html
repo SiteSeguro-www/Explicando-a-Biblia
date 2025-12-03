@@ -293,7 +293,13 @@
         const ResultModal = ({ result, onClose, onShare, onSpeak, isSpeaking }) => {
             useEffect(() => {
                 document.body.style.overflow = 'hidden';
-                return () => { document.body.style.overflow = 'auto'; };
+                
+                // Auto-play text-to-speech when modal opens
+                onSpeak();
+                
+                return () => { 
+                    document.body.style.overflow = 'auto'; 
+                };
             }, []);
 
             return (
