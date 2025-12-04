@@ -33,9 +33,12 @@ serve(async (req) => {
     }
 
     // Mercado Pago Config
-    // IMPORTANTE: Adicione MP_ACCESS_TOKEN nas "Secrets" do seu projeto Supabase
-    // Valor: APP_USR-1202211176022133-091923-fad0208a5d2743b36dbb9e02f4fb82d2-160769628
-    const mpAccessToken = Deno.env.get('MP_ACCESS_TOKEN') || 'APP_USR-1202211176022133-091923-fad0208a5d2743b36dbb9e02f4fb82d2-160769628';
+    // SECURITY: Only uses the environment variable set in Supabase Secrets.
+    const mpAccessToken = Deno.env.get('MP_ACCESS_TOKEN');
+    
+    if (!mpAccessToken) {
+      throw new Error('Server configuration error: Missing MP_ACCESS_TOKEN');
+    }
     
     const body = {
       items: [
@@ -49,7 +52,7 @@ serve(async (req) => {
         }
       ],
       back_urls: {
-        success: "https://siteseguro-www.github.io/Explicando-a-Biblia/?status=approved", // Mude para seu URL real
+        success: "https://siteseguro-www.github.io/Explicando-a-Biblia/?status=approved", 
         failure: "https://siteseguro-www.github.io/Explicando-a-Biblia/?status=failure",
         pending: "https://siteseguro-www.github.io/Explicando-a-Biblia/?status=pending"
       },

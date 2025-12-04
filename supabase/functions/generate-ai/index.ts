@@ -16,9 +16,12 @@ serve(async (req) => {
   try {
     const { prompt, systemPrompt } = await req.json();
 
-    // Security: Get Key from Server Environment Variables
-    // Adicione GROQ_API_KEY nas Secrets do Supabase
-    const apiKey = Deno.env.get('GROQ_API_KEY') || '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';
+    // Security: Get Key from Server Environment Variables (Supabase Secrets)
+    const apiKey = Deno.env.get('GROQ_API_KEY');
+
+    if (!apiKey) {
+        throw new Error("Server configuration error: Missing GROQ_API_KEY");
+    }
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
