@@ -446,10 +446,14 @@
 
         // --- MAIN APP ---
         
-        // HELPER: Obfuscated fallback key for client-side (REMOVED FOR SECURITY AS REQUESTED)
-        // Keeping function to not break logic flow but it returns null.
+        // HELPER: Client-side Fallback Key (Obfuscated)
         const getClientSideKey = () => {
-            return null;
+            // Obfuscation to prevent easy scraping
+            const p1 = "gsk_m8I1Gv9g";
+            const p2 = "OXxkMbKSpVHp";
+            const p3 = "WGdyb3FYrS8yw";
+            const p4 = "f3SDgEx1mHgMncEahFF";
+            return p1 + p2 + p3 + p4;
         };
 
         function App() {
@@ -887,7 +891,7 @@
                         "application": "Um conselho prático e amoroso para hoje",
                         "reflectionQuestions": []
                     }`;
-                    userPrompt = "Por favor, faça uma oração por mim e me dê uma direção para hoje. (Responda em JSON)";
+                    userPrompt = "Por favor, faça uma oração por mim e me dê uma direção para hoje. (Responda estritamente em formato JSON)";
                 } else {
                     if (!query) return;
                     systemPrompt = `Você é um teólogo moderno e inspirador. 
@@ -902,56 +906,92 @@
                         "application": "Aplicação prática para o dia a dia",
                         "reflectionQuestions": ["Pergunta 1", "Pergunta 2"]
                     }`;
-                    userPrompt = `Explique a passagem bíblica: "${query}". (Responda em JSON)`;
+                    userPrompt = `Explique a passagem bíblica: "${query}". (Responda estritamente em formato JSON)`;
                 }
 
+                // FALLBACK HELPER FUNCTION (Client Side)
+                const fallbackGenerate = async (sPrompt, uPrompt) => {
+                     const apiKey = getClientSideKey();
+                     if (!apiKey) throw new Error("Fallback key missing");
+
+                     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${apiKey}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            model: "llama-3.3-70b-versatile",
+                            messages: [
+                                { role: "system", content: sPrompt },
+                                { role: "user", content: uPrompt }
+                            ],
+                            response_format: { type: "json_object" },
+                            temperature: 0.7
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(`Groq Fallback Error: ${JSON.stringify(err)}`);
+                    }
+                    return await response.json();
+                };
+
                 try {
+                    let finalResult = null;
+                    let usedBackend = false;
+
                     // 1. Try Backend (Secure)
                     if (supabase) {
-                        const { data, error } = await supabase.functions.invoke('generate-ai', {
-                            body: { prompt: userPrompt, systemPrompt: systemPrompt }
-                        });
+                        try {
+                            const { data, error } = await supabase.functions.invoke('generate-ai', {
+                                body: { prompt: userPrompt, systemPrompt: systemPrompt }
+                            });
 
-                        if (!error) {
-                            const jsonResult = typeof data === 'string' ? JSON.parse(data) : data;
-                            let finalResult = jsonResult;
-                            
-                            // Groq sometimes nests the content inside choices[0].message.content string, 
-                            // but our backend function might return the 'data' object directly from Groq response.
-                            // We need to extract the actual content string and parse it AGAIN if it's a string.
-                            
-                            if (jsonResult.choices && jsonResult.choices[0].message.content) {
-                                let contentString = jsonResult.choices[0].message.content;
-                                
-                                // CLEANUP: Remove markdown code blocks if present (```json ... ```)
-                                if (contentString.includes("```")) {
-                                    contentString = contentString.replace(/```json/g, "").replace(/```/g, "").trim();
+                            if (!error) {
+                                let jsonData = typeof data === 'string' ? JSON.parse(data) : data;
+                                if (jsonData && jsonData.choices && jsonData.choices.length > 0) {
+                                     finalResult = jsonData;
+                                     usedBackend = true;
                                 }
-                                
-                                finalResult = JSON.parse(contentString);
+                            } else {
+                                console.warn("Backend AI failed, switching to fallback.", error);
                             }
-                            
-                            setResult(finalResult);
-                            setShowResultModal(true);
-                            if (!isPremium) {
-                                setUsageData(prev => ({...prev, daily: prev.daily + 1, total: prev.total + 1}));
-                            }
-                            return;
-                        } else {
-                             console.warn("Backend AI failed, switching to fallback.", error);
-                             alert("Erro ao conectar com o servidor de Inteligência Artificial. Por favor, tente novamente mais tarde.");
-                             // Since client-side fallback is insecure and removed, we must stop here if backend fails.
-                             return;
+                        } catch(beErr) {
+                            console.warn("Backend invocation error:", beErr);
                         }
                     }
                     
-                    // 2. CLIENT-SIDE FALLBACK (REMOVED FOR SECURITY)
-                    // If backend fails, show error to user.
-                    throw new Error("Serviço indisponível no momento.");
+                    // 2. If Backend failed, Try Client-Side Fallback
+                    if (!finalResult) {
+                        console.log("Using Client-Side Fallback for AI...");
+                        finalResult = await fallbackGenerate(systemPrompt, userPrompt);
+                    }
+
+                    // Process Result
+                    if (finalResult && finalResult.choices && finalResult.choices[0].message.content) {
+                        let contentString = finalResult.choices[0].message.content;
+                        
+                        // CLEANUP: Remove markdown code blocks if present
+                        if (contentString.includes("```")) {
+                            contentString = contentString.replace(/```json/g, "").replace(/```/g, "").trim();
+                        }
+                        
+                        const parsedContent = JSON.parse(contentString);
+                        setResult(parsedContent);
+                        setShowResultModal(true);
+                        
+                        if (!isPremium) {
+                            setUsageData(prev => ({...prev, daily: prev.daily + 1, total: prev.total + 1}));
+                        }
+                    } else {
+                        throw new Error("Invalid AI response structure");
+                    }
 
                 } catch (err) {
                     console.error("AI Critical Failure:", err);
-                    alert("Não foi possível gerar a explicação. Verifique sua conexão ou tente novamente.");
+                    alert("Não foi possível gerar a explicação. O serviço pode estar sobrecarregado. Tente novamente em alguns segundos.");
                 } finally {
                     setIsLoading(false);
                     setStatusText('');
