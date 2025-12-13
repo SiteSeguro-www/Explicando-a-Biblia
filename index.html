@@ -223,7 +223,6 @@
             100% { transform: rotate(360deg); }
         }
     </style>
-<link rel="stylesheet" href="/index.css">
 </head>
 <body>
 
@@ -446,15 +445,6 @@
 
         // --- MAIN APP ---
         
-        // HELPER: Obfuscated fallback key for client-side
-        const getClientSideKey = () => {
-            // Obfuscate: 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
-            const p1 = "gsk_m8I1Gv9gO";
-            const p2 = "XxkMbKSpVHpWGdyb3";
-            const p3 = "FYrS8ywf3SDgEx1mHgMncEahFF";
-            return p1 + p2 + p3;
-        };
-
         function App() {
             const [mode, setMode] = useState('text'); 
             const [inputText, setInputText] = useState('');
@@ -514,42 +504,152 @@
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
 
-            // --- CHECK FOR PAYMENT RETURN (AUTO VALIDATION) ---
+            // --- HELPER: FALLBACK CLIENT SIDE AI (EMERGENCY) ---
+            const generateGroqClientSide = async (systemPrompt, userPrompt) => {
+                // --- ATENÇÃO: COLOQUE SUA CHAVE AQUI SE O BACKEND FALHAR ---
+                // Chave ofuscada dividida para dificultar raspagem simples
+                // Substitua 'COLAR_SUA_CHAVE_AQUI' pela sua chave real gsk_...
+                const part1 = "gsk_"; 
+                const part2 = "hmzURblGsVw7L89PwxIPWGdyb3FYT2lq8uFPJ0iWCha2DbG1X4wj"; 
+                const apiKey = part1 + part2;
+
+                if (apiKey.includes("COLAR_SUA")) {
+                    console.warn("Chave de API client-side não configurada. Fallback falhará.");
+                    throw new Error("Servidor indisponível e chave de backup não configurada.");
+                }
+
+                console.log("Using Client-Side Fallback due to Backend Failure");
+                
+                const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: "llama-3.3-70b-versatile",
+                        messages: [
+                            { role: "system", content: systemPrompt },
+                            { role: "user", content: userPrompt }
+                        ],
+                        response_format: { type: "json_object" },
+                        temperature: 0.5
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Client API Error: ${response.status}`);
+                }
+                const data = await response.json();
+                const content = data.choices[0].message.content;
+                return JSON.parse(content);
+            };
+
+            // --- HELPER: INVOKE WITH RETRY & FALLBACK ---
+            const invokeWithRetry = async (functionName, body, retries = 2) => {
+                if (!supabase) throw new Error("Supabase não inicializado.");
+
+                // Helper to get token
+                const getAuthHeader = async () => {
+                    const { data } = await supabase.auth.getSession();
+                    const token = data.session?.access_token || window.SUPABASE_ANON_KEY;
+                    return `Bearer ${token}`;
+                };
+
+                for (let i = 0; i <= retries; i++) {
+                    try {
+                        // 1. First attempt: Standard SDK Call
+                        const { data, error } = await supabase.functions.invoke(functionName, { body });
+                        if (error) throw error;
+                        return data;
+                    } catch (err) {
+                        console.warn(`Attempt ${i+1} failed via SDK:`, err);
+                        
+                        // 2. Fallback: Direct Fetch (Robust against SDK network quirks)
+                        try {
+                            const tokenHeader = await getAuthHeader();
+                            const baseUrl = window.SUPABASE_URL.replace(/\/$/, '');
+                            const functionUrl = `${baseUrl}/functions/v1/${functionName}`;
+                            
+                            const controller = new AbortController();
+                            const timeoutId = setTimeout(() => controller.abort(), 30000); 
+
+                            const response = await fetch(functionUrl, {
+                                method: 'POST',
+                                headers: {
+                                    'Authorization': tokenHeader,
+                                    'apikey': window.SUPABASE_ANON_KEY,
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify(body),
+                                signal: controller.signal
+                            });
+                            
+                            clearTimeout(timeoutId);
+
+                            if (!response.ok) {
+                                throw new Error(`Server error ${response.status}`);
+                            }
+                            
+                            const textData = await response.text();
+                            try {
+                                return JSON.parse(textData);
+                            } catch(e) {
+                                return textData;
+                            }
+
+                        } catch (fetchErr) {
+                            console.warn(`Attempt ${i+1} failed via Direct Fetch:`, fetchErr);
+                            // If last retry, bubble up error to trigger Client-Side Fallback in main function
+                            if (i === retries) throw fetchErr;
+                        }
+                        await new Promise(r => setTimeout(r, (i + 1) * 1000));
+                    }
+                }
+            };
+
+            // --- CHECK FOR PAYMENT RETURN (AUTO VALIDATION SECURE) ---
             useEffect(() => {
                 const checkPaymentStatus = async () => {
                     if (!supabase) return;
 
                     const queryParams = new URLSearchParams(window.location.search);
+                    // Mercado Pago returns collection_id, collection_status, etc.
+                    const paymentId = queryParams.get('collection_id') || queryParams.get('payment_id');
                     const status = queryParams.get('collection_status') || queryParams.get('status');
                     
-                    if (status === 'approved') {
+                    if (status === 'approved' && paymentId) {
                         setIsLoading(true);
-                        setStatusText('Validando pagamento...');
+                        setStatusText('Validando pagamento com segurança...');
                         
-                        // Wait for user session to be restored
-                        const { data: { session } } = await supabase.auth.getSession();
-                        
-                        if (session?.user) {
-                            // Update DB
-                            await supabase
-                                .from('profiles')
-                                .update({ is_premium: true })
-                                .eq('id', session.user.id);
-                            
-                            setIsPremium(true);
-                            playSuccessSound();
-                            alert("Pagamento aprovado! Seu acesso Premium está liberado.");
-                            
-                            // Clean URL
-                            window.history.replaceState({}, document.title, window.location.pathname);
+                        try {
+                            const { data: { session } } = await supabase.auth.getSession();
+                            if (session?.user) {
+                                // CALL SECURE BACKEND FUNCTION WITH RETRY
+                                const data = await invokeWithRetry('verify-payment', { payment_id: paymentId });
+                                
+                                if (data?.success) {
+                                    setIsPremium(true);
+                                    playSuccessSound();
+                                    alert("Pagamento aprovado e validado! Seu acesso Premium está liberado.");
+                                    // Clean URL
+                                    window.history.replaceState({}, document.title, window.location.pathname);
+                                } else {
+                                    console.warn("Payment verification failed:", data);
+                                    alert("Pagamento em processamento ou não validado ainda. Aguarde alguns instantes.");
+                                }
+                            }
+                        } catch (err) {
+                            console.error("Payment check error:", err);
+                        } finally {
+                            setIsLoading(false);
+                            setStatusText('');
                         }
-                        setIsLoading(false);
-                        setStatusText('');
                     }
                 };
                 
                 // Small delay to ensure auth is ready
-                setTimeout(checkPaymentStatus, 1500);
+                setTimeout(checkPaymentStatus, 2000);
             }, []);
 
             // INITIALIZE AUTH & REALTIME LISTENER
@@ -617,7 +717,14 @@
                 if ('serviceWorker' in navigator) {
                     navigator.serviceWorker.register('./sw.js')
                         .then(reg => console.log("Service Worker de Ads registrado com sucesso:", reg))
-                        .catch(err => console.warn("Falha ao registrar Service Worker de Ads:", err));
+                        .catch(err => {
+                            // Suppress error if it is about origin mismatch (common in previews)
+                            if (err.message && err.message.includes("origin")) {
+                                console.log("Service Worker skipped due to origin mismatch (preview mode).");
+                            } else {
+                                console.warn("Falha ao registrar Service Worker de Ads:", err);
+                            }
+                        });
                 }
 
                 const interval = setInterval(() => {
@@ -699,28 +806,7 @@
                     return;
                 }
                 
-                // Use BE function if available, or fallback to static link for simpler environments
-                if (supabase) {
-                    try {
-                        // Attempt to create preference via backend (secure)
-                        const { data, error } = await supabase.functions.invoke('create-payment', {
-                            body: { } // no need to send token, backend handles it
-                        });
-                        
-                        if (!error && data?.init_point) {
-                            setPaymentPending(true);
-                            window.location.href = data.init_point; // Redirect to Mercado Pago
-                            return;
-                        }
-                         // Fallback if backend fails
-                         console.warn("Backend payment creation failed, using static link fallback.");
-                    } catch (e) {
-                        console.warn("Payment backend error:", e);
-                    }
-                }
-
-                // Fallback Static Link
-                // NOTE: Replace with your generic payment link if dynamic creation fails
+                // DIRECT MERCADO PAGO LINK FALLBACK
                 const STATIC_LINK = "https://mpago.la/2EDrNVs"; 
                 setPaymentPending(true);
                 window.open(STATIC_LINK, '_blank');
@@ -909,73 +995,46 @@
                 }
 
                 try {
-                    // 1. Try Backend (Secure)
+                    // 1. Try Backend (Secure) with Retry Logic
+                    let data;
                     if (supabase) {
-                        const { data, error } = await supabase.functions.invoke('generate-ai', {
-                            body: { prompt: userPrompt, systemPrompt: systemPrompt }
-                        });
+                        try {
+                            data = await invokeWithRetry('generate-ai', {
+                                prompt: userPrompt, systemPrompt: systemPrompt
+                            });
+                            
+                            // Check for logic errors returned by backend
+                            if (data.error) throw new Error(data.error);
 
-                        if (!error) {
-                            const jsonResult = typeof data === 'string' ? JSON.parse(data) : data;
-                            let finalResult = jsonResult;
-                            if (jsonResult.choices && jsonResult.choices[0].message.content) {
-                                finalResult = JSON.parse(jsonResult.choices[0].message.content);
-                            }
-                            setResult(finalResult);
-                            setShowResultModal(true);
-                            if (!isPremium) {
-                                setUsageData(prev => ({...prev, daily: prev.daily + 1, total: prev.total + 1}));
-                            }
-                            return;
-                        } else {
-                             console.warn("Backend AI failed, switching to fallback.", error);
+                        } catch (backendError) {
+                            console.warn("Backend failed, switching to fallback:", backendError);
+                            // 2. FALLBACK: CLIENT SIDE AI
+                            data = await generateGroqClientSide(systemPrompt, userPrompt);
                         }
+                    } else {
+                        // Direct fallback if no supabase
+                         data = await generateGroqClientSide(systemPrompt, userPrompt);
                     }
+
+                    // Success!
+                    setResult(data);
+                    setShowResultModal(true);
                     
-                    // 2. CLIENT-SIDE FALLBACK (If Backend fails/not deployed)
-                    try {
-                        const apiKey = getClientSideKey();
-                        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-                            method: 'POST',
-                            headers: {
-                                'Authorization': `Bearer ${apiKey}`,
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                model: "llama-3.3-70b-versatile",
-                                messages: [
-                                    { role: "system", content: systemPrompt },
-                                    { role: "user", content: userPrompt }
-                                ],
-                                response_format: { type: "json_object" },
-                                temperature: 0.7
-                            })
-                        });
-
-                        if (!response.ok) {
-                            const errData = await response.json();
-                            throw new Error(errData.error?.message || "Client-side API failed");
-                        }
-                        
-                        const data = await response.json();
-                        let finalResult = JSON.parse(data.choices[0].message.content);
-                        
-                        setResult(finalResult);
-                        setShowResultModal(true);
-                        
-                        if (!isPremium) {
-                            setUsageData(prev => ({
-                                ...prev,
-                                daily: prev.daily + 1,
-                                total: prev.total + 1
-                            }));
-                        }
-
-                    } catch (clientError) {
-                        console.error("AI Critical Failure:", clientError);
-                        alert("Não foi possível gerar a explicação no momento. Verifique sua conexão e tente novamente.");
+                    if (!isPremium) {
+                        setUsageData(prev => ({...prev, daily: prev.daily + 1, total: prev.total + 1}));
                     }
-
+                } catch (error) {
+                    console.error("Critical Failure:", error);
+                    let msg = "Houve um erro ao conectar com a Inteligência Artificial.";
+                    
+                    if (error.message.includes("Failed to fetch") || error.message.includes("404")) {
+                        msg = "Falha de conexão com o servidor. Verifique se o deploy foi concluído ou se há bloqueadores de anúncio.";
+                    } else if (error.message.includes("Configuration Error") || error.message.includes("backup")) {
+                        msg = "Erro de Configuração: Backend indisponível e chave de backup não configurada no código.";
+                    } else {
+                        msg += ` (${error.message})`;
+                    }
+                    alert(msg);
                 } finally {
                     setIsLoading(false);
                     setStatusText('');
@@ -1208,6 +1267,5 @@
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
-<script type="module" src="/index.tsx"></script>
 </body>
 </html>
